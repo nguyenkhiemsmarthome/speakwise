@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>SpeakWise • Luyện Đọc Tiếng Anh</title>
+  
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SpeakWise">
+  <meta name="theme-color" content="#4F46E5">
+  <link rel="apple-touch-icon" href="https://api.iconify.design/heroicons:academic-cap-20-solid.svg?color=%234F46E5">
+  <link rel="manifest" href="./manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-dark: #3730A3;
+      --primary-light: #EEF2FF;
+      --success: #10B981;
+      --cyan: #06B6D4;
+      --warning: #F59E0B;
+      --danger: #F43F5E;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --radius: 16px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: -webkit-fill-available;
+      overflow: hidden;
+      padding-top: var(--safe-top);
+    }
+
+    /* Header */
+    header {
+      background: var(--card);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .header-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .free-pill {
+      font-size: 11px;
+      background: #D1FAE5;
+      color: #065F46;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      padding-bottom: calc(75px + var(--safe-bottom));
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Bottom Navigation Bar (iOS Style) */
+    nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: calc(60px + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 100;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      flex: 1;
+      padding: 4px 0;
+      transition: all 0.2s;
+    }
+    .nav-item.active {
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .nav-icon {
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+      margin-bottom: 16px;
+    }
+
+    .hero-banner {
+      background: linear-gradient(135deg, #3730A3, #4F46E5, #06B6D4);
+      color: white;
+      border: none;
+    }
+    .hero-banner h2 {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .hero-banner p {
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+
+    /* Chips */
+    .chip-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .chip-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .chip {
+      padding: 6px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .chip.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Sentence Card */
+    .sentence-card {
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .sentence-card:active {
+      transform: scale(0.98);
+    }
+    .sentence-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .level-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: #E0E7FF;
+      color: var(--primary);
+    }
+    .cat-tag {
+      font-size: 11px;
+      background: var(--bg);
+      color: var(--text-muted);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .sentence-en {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+    .sentence-vi {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .focus-pill {
+      display: inline-block;
+      font-size: 12px;
+      background: #F1F5F9;
+      color: var(--primary);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+
+    /* Studio Practice UI */
+    .studio-word-reader {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 12px 0;
+    }
+    .word-btn {
+      font-size: 18px;
+      font-weight: 600;
+      padding: 3px 6px;
+      border-radius: 6px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--text-main);
+      transition: all 0.2s;
+    }
+    .word-btn:active {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .word-btn.speaking {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .ipa-text {
+      font-size: 14px;
+      color: var(--primary);
+      font-family: Menlo, Monaco, monospace;
+      margin-bottom: 6px;
+    }
+
+    /* Microphone Control Button */
+    .mic-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .mic-btn {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: none;
+      color: white;
+      font-size: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
+      transition: all 0.2s;
+      position: relative;
+    }
+    .mic-btn.recording {
+      background: var(--danger);
+      box-shadow: 0 0 0 10px rgba(244, 63, 94, 0.2), 0 0 0 20px rgba(244, 63, 94, 0.1);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+
+    /* Waveform visualizer */
+    .waveform-bar-container {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+      height: 32px;
+      margin-bottom: 12px;
+    }
+    .wave-bar {
+      width: 4px;
+      height: 8px;
+      background: #CBD5E1;
+      border-radius: 2px;
+      transition: height 0.1s;
+    }
+    .wave-bar.active {
+      background: var(--primary);
+    }
+
+    /* Action Buttons */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-secondary {
+      background: #EEF2FF;
+      color: var(--primary);
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+    .btn:active {
+      opacity: 0.8;
+    }
+
+    /* Scoring Section */
+    .score-circle-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .score-badge {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 4px solid var(--primary);
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .score-badge .score-val {
+      font-size: 24px;
+      line-height: 1;
+    }
+    .score-badge .score-unit {
+      font-size: 10px;
+    }
+
+    .word-breakdown-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .scored-word {
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .scored-word.perfect {
+      background: #D1FAE5;
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+    }
+    .scored-word.good {
+      background: #CFFAFE;
+      color: #0E7490;
+      border: 1px solid #A5F3FC;
+    }
+    .scored-word.needs_work {
+      background: #FEF3C7;
+      color: #92400E;
+      border: 1px solid #FDE68A;
+    }
+    .scored-word.missed {
+      background: #FFE4E6;
+      color: #9F1239;
+      border: 1px solid #FECDD3;
+    }
+
+    /* Modal / Bottom Sheet */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: none;
+      align-items: flex-end;
+      z-index: 200;
+    }
+    .modal-sheet {
+      background: var(--card);
+      width: 100%;
+      border-radius: 20px 20px 0 0;
+      padding: 24px;
+      padding-bottom: calc(24px + var(--safe-bottom));
+      animation: slideUp 0.25s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      top: calc(16px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1E293B;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 24px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 300;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header>
+    <div class="header-title">
+      <span>🎙️ SpeakWise</span>
+      <span class="free-pill">iOS Web PWA</span>
+    </div>
+    <div id="streak-badge" style="font-size: 13px; font-weight: 600; color: #F59E0B;">
+      🔥 1 ngày
+    </div>
+  </header>
+
+  <!-- Main Scrollable Content -->
+  <main id="main-content">
+    
+    <!-- TAB 1: KHO CÂU (EXPLORE) -->
+    <div id="tab-explore">
+      <div class="card hero-banner">
+        <h2>Luyện Đọc Chuẩn Bản Xứ</h2>
+        <p>Phân tích phát âm chi tiết bằng nhận diện giọng nói Web Speech API trên iPhone hoàn toàn miễn phí.</p>
+        <div style="display: flex; justify-content: space-between; margin-top: 14px;">
+          <div><b id="stat-total-câu">20</b> câu có sẵn</div>
+          <div><b id="stat-practiced">0</b> lượt luyện</div>
+          <div><b id="stat-avg">--</b> đ trung bình</div>
+        </div>
+      </div>
+
+      <!-- Categories Filter -->
+      <div class="chip-scroll" id="cat-chips">
+        <div class="chip active" onclick="filterCategory('ALL')">Tất cả</div>
+        <div class="chip" onclick="filterCategory('DAILY')">Giao tiếp hàng ngày</div>
+        <div class="chip" onclick="filterCategory('TRAVEL')">Du lịch & Ăn uống</div>
+        <div class="chip" onclick="filterCategory('BUSINESS')">Công việc & Phỏng vấn</div>
+        <div class="chip" onclick="filterCategory('TONGUE_TWISTER')">Luyện âm xoắn lưỡi</div>
+        <div class="chip" onclick="filterCategory('IDIOMS')">Thành ngữ & Cảm hứng</div>
+      </div>
+
+      <!-- Sentences List -->
+      <div id="sentences-list"></div>
+    </div>
+
+    <!-- TAB 2: STUDIO PHÁT ÂM (STUDIO) -->
+    <div id="tab-studio" style="display: none;">
+      <!-- Navigation Header for sentence -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <button class="btn btn-outline" style="flex: none; padding: 6px 12px;" onclick="prevSentence()">◀ Câu trước</button>
+        <span id="current-level-badge" class="level-tag">A1</span>
+        <button class="btn btn-outline" style="flex: none; padding: 6px 12px;" onclick="nextSentence()">Câu sau ▶</button>
+      </div>
+
+      <!-- Target Sentence Card -->
+      <div class="card">
+        <div style="font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase;">
+          Bấm vào từng từ để nghe giọng đọc mẫu
+        </div>
+        
+        <div class="studio-word-reader" id="studio-word-container"></div>
+        <div class="ipa-text" id="studio-ipa"></div>
+        <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;" id="studio-vi"></div>
+        
+        <div class="focus-pill" id="studio-focus"></div>
+
+        <div class="btn-row" style="margin-top: 16px;">
+          <button class="btn btn-secondary" onclick="playCurrentSentence(1.0)">🔊 Nghe chuẩn (1.0x)</button>
+          <button class="btn btn-outline" onclick="playCurrentSentence(0.75)">🐢 Nghe chậm (0.75x)</button>
+        </div>
+      </div>
+
+      <!-- Mic & Live Recognition -->
+      <div class="card" style="text-align: center;">
+        <div class="waveform-bar-container" id="waveform-container" style="justify-content: center;"></div>
+        
+        <div class="mic-container">
+          <button class="mic-btn" id="mic-button" onclick="toggleRecording()">🎙️</button>
+          <div id="mic-status-label" style="font-size: 14px; font-weight: 600; margin-top: 10px; color: var(--text-main);">
+            Bấm mic và đọc câu tiếng Anh trên
+          </div>
+          <div id="partial-transcript" style="font-size: 13px; color: var(--primary); margin-top: 6px; font-style: italic; min-height: 20px;"></div>
+        </div>
+
+        <!-- Quick Demo Analysis Button -->
+        <button class="btn btn-outline" style="font-size: 12px; padding: 6px 12px; margin: 0 auto;" onclick="simulateAnalysis()">
+          ⚡ Chấm điểm thử mẫu (Test Analysis)
+        </button>
+      </div>
+
+      <!-- Detailed Analysis Result -->
+      <div id="analysis-result-container" style="display: none;" class="card">
+        <div class="score-circle-wrapper">
+          <div>
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-muted);">KẾT QUẢ CHẤM ĐIỂM</div>
+            <div style="font-size: 20px; font-weight: 800; color: var(--primary);" id="result-title">Rất tốt! 🎉</div>
+            <div style="font-size: 14px; color: #F59E0B; margin-top: 2px;" id="result-stars">⭐⭐⭐</div>
+          </div>
+          <div class="score-badge" id="result-score-badge">
+            <span class="score-val" id="result-score">92</span>
+            <span class="score-unit">ĐIỂM</span>
+          </div>
+        </div>
+
+        <div style="font-size: 13px; background: #F8FAFC; padding: 10px; border-radius: 8px; margin-bottom: 14px;" id="result-feedback">
+          Phát âm tự nhiên và rõ ràng. Hãy lưu ý các âm đuôi để đạt điểm tuyệt đối!
+        </div>
+
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px;">Đánh giá từng từ:</div>
+        <div class="word-breakdown-row" id="result-word-chips"></div>
+
+        <div style="font-size: 12px; background: #EEF2FF; padding: 12px; border-radius: 8px; margin-top: 12px;" id="result-advice"></div>
+
+        <div class="btn-row" style="margin-top: 16px;">
+          <button class="btn btn-outline" onclick="resetStudio()">🔄 Đọc lại</button>
+          <button class="btn btn-primary" onclick="nextSentence()">Câu kế tiếp ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: TIẾN ĐỘ & LỊCH SỬ (STATS) -->
+    <div id="tab-stats" style="display: none;">
+      <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Tiến Độ Của Bạn</h2>
+      <div class="card" style="display: flex; justify-content: space-around; text-align: center;">
+        <div>
+          <div style="font-size: 24px; font-weight: 800; color: var(--primary);" id="stats-total">0</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Lượt luyện</div>
+        </div>
+        <div>
+          <div style="font-size: 24px; font-weight: 800; color: var(--success);" id="stats-mastered">0</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Câu ≥80 điểm</div>
+        </div>
+        <div>
+          <div style="font-size: 24px; font-weight: 800; color: #F59E0B;" id="stats-avg-score">--</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Điểm TB</div>
+        </div>
+      </div>
+
+      <h3 style="font-size: 16px; font-weight: 700; margin: 16px 0 8px 0;">Lịch Sử Luyện Gần Đây</h3>
+      <div id="history-list"></div>
+    </div>
+
+    <!-- TAB 4: CÀI ĐẶT & HƯỚNG DẪN IPHONE (SETTINGS) -->
+    <div id="tab-settings" style="display: none;">
+      <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Cài Đặt & Hướng Dẫn</h2>
+      
+      <div class="card" style="background: #F0FDF4; border-color: #BBF7D0;">
+        <h3 style="color: #166534; font-size: 15px; font-weight: 700; margin-bottom: 6px;">📱 Cách cài SpeakWise lên màn hình iPhone:</h3>
+        <ol style="font-size: 13px; color: #166534; padding-left: 18px; line-height: 1.6;">
+          <li>Mở trang này bằng trình duyệt <b>Safari</b> trên iPhone.</li>
+          <li>Nhấn vào biểu tượng <b>Chia sẻ (Share)</b> ở cạnh dưới màn hình Safari (hình vuông mũi tên trỏ lên).</li>
+          <li>Kéo xuống và chọn <b>"Thêm vào Màn hình chính" (Add to Home Screen)</b>.</li>
+          <li>Bấm <b>Thêm (Add)</b>. Ứng dụng sẽ xuất hiện như app native trên iPhone!</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 10px;">Chất giọng đọc mẫu (Voice Accent):</h3>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-secondary" id="btn-accent-us" onclick="setAccent('US')">🇺🇸 Tiếng Anh - Mỹ (US)</button>
+          <button class="btn btn-outline" id="btn-accent-uk" onclick="setAccent('UK')">🇬🇧 Tiếng Anh - Anh (UK)</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">Bí quyết phát âm tiếng Anh:</h3>
+        <div style="font-size: 13px; line-height: 1.5; color: var(--text-main);">
+          • <b>Âm /θ/ và /ð/ (think, the):</b> Đặt đầu lưỡi giữa hai hàm răng và thổi luồng hơi nhẹ.<br>
+          • <b>Âm /s/ vs /ʃ/ (see, she):</b> Với /s/ khép hai hàm răng xì hơi. Với /ʃ/ chu tròn môi và đẩy hơi mạnh.<br>
+          • <b>Âm đuôi -ed:</b> Bật rõ /t/ sau phụ âm vô thanh, /d/ sau phụ âm hữu thanh và /ɪd/ sau t hoặc d.
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav>
+    <div class="nav-item active" onclick="switchTab('explore')">
+      <div class="nav-icon">📖</div>
+      <div>Kho câu</div>
+    </div>
+    <div class="nav-item" onclick="switchTab('studio')">
+      <div class="nav-icon">🎙️</div>
+      <div>Studio</div>
+    </div>
+    <div class="nav-item" onclick="switchTab('stats')">
+      <div class="nav-icon">📊</div>
+      <div>Tiến độ</div>
+    </div>
+    <div class="nav-item" onclick="switchTab('settings')">
+      <div class="nav-icon">⚙️</div>
+      <div>Cài đặt</div>
+    </div>
+  </nav>
+
+  <!-- Word Detail Bottom Sheet Modal -->
+  <div class="modal-overlay" id="word-modal" onclick="closeWordModal(event)">
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div>
+          <h2 style="font-size: 26px; font-weight: 800;" id="modal-word">Word</h2>
+          <div style="font-size: 16px; color: var(--primary); font-family: monospace;" id="modal-ipa">/wɜːrd/</div>
+        </div>
+        <button class="btn btn-secondary" style="border-radius: 50%; width: 44px; height: 44px; padding: 0;" onclick="playWordAudio()">🔊</button>
+      </div>
+      
+      <div id="modal-status-badge" style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; margin-bottom: 12px;"></div>
+
+      <div style="background: #F8FAFC; padding: 12px; border-radius: 10px; margin-bottom: 10px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted);">NGHĨA TIẾNG VIỆT</div>
+        <div style="font-size: 14px; font-weight: 500;" id="modal-meaning">...</div>
+      </div>
+
+      <div style="background: #EEF2FF; padding: 12px; border-radius: 10px; margin-bottom: 16px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--primary);">MẸO PHÁT ÂM</div>
+        <div style="font-size: 13px; color: var(--text-main);" id="modal-tip">...</div>
+      </div>
+
+      <button class="btn btn-primary" style="width: 100%;" onclick="closeWordModal()">Đã hiểu</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Application Logic -->
+  <script>
+    // Preset English Sentences
+    const sentences = [
+      {
+        id: 1,
+        en: "Good morning, how are you doing today?",
+        vi: "Chào buổi sáng, hôm nay bạn thế nào?",
+        ipa: "/ɡʊd ˈmɔːrnɪŋ haʊ ɑːr juː ˈduːɪŋ təˈdeɪ/",
+        cat: "DAILY",
+        level: "A1",
+        focus: "Ngữ điệu chào hỏi & âm /ŋ/",
+        words: [
+          { w: "Good", ipa: "/ɡʊd/", m: "Tốt, hay", tip: "Âm /ʊ/ ngắn, đừng đọc thành /u:/" },
+          { w: "morning", ipa: "/ˈmɔːrnɪŋ/", m: "Buổi sáng", tip: "Âm đuôi /ŋ/ phát âm từ vòm họng" },
+          { w: "how", ipa: "/haʊ/", m: "Thế nào", tip: "Mở tròn khẩu hình /aʊ/" },
+          { w: "are", ipa: "/ɑːr/", m: "Thì, là", tip: "Hơi cuộn lưỡi âm /r/" },
+          { w: "you", ipa: "/juː/", m: "Bạn", tip: "Âm /j/ lướt nhẹ" },
+          { w: "doing", ipa: "/ˈduːɪŋ/", m: "Đang làm", tip: "Trọng âm ở âm đầu" },
+          { w: "today", ipa: "/təˈdeɪ/", m: "Hôm nay", tip: "Âm đầu là schwa /tə/" }
+        ]
+      },
+      {
+        id: 2,
+        en: "Could you please tell me where the nearest station is?",
+        vi: "Bạn có thể chỉ cho tôi nhà ga gần nhất ở đâu không?",
+        ipa: "/kʊd juː pliːz tɛl miː wɛr ðə ˈnɪrɪst ˈsteɪʃn ɪz/",
+        cat: "DAILY",
+        level: "A2",
+        focus: "Âm /ð/ trong 'the' & âm đuôi /z/",
+        words: [
+          { w: "Could", ipa: "/kʊd/", m: "Có thể", tip: "Chữ 'l' câm" },
+          { w: "please", ipa: "/pliːz/", m: "Làm ơn", tip: "Âm đuôi /z/ rung thanh quản" },
+          { w: "the", ipa: "/ðə/", m: "Xác định", tip: "Kẹp đầu lưỡi giữa hai hàm răng" },
+          { w: "nearest", ipa: "/ˈnɪrɪst/", m: "Gần nhất", tip: "Nhấn âm 1" },
+          { w: "station", ipa: "/ˈsteɪʃn/", m: "Nhà ga", tip: "Chu môi tròn âm /ʃ/" }
+        ]
+      },
+      {
+        id: 3,
+        en: "I would like to order a cup of hot black coffee, please.",
+        vi: "Tôi muốn gọi một tách cà phê đen nóng, làm ơn.",
+        ipa: "/aɪ wʊd laɪk tuː ˈɔːrdər ə kʌp ʌv hɑːt blæk ˈkɔːfi pliːz/",
+        cat: "DAILY",
+        level: "A1",
+        focus: "Âm bật /k/ & âm /ʌ/ trong 'cup'",
+        words: [
+          { w: "would", ipa: "/wʊd/", m: "Muốn / sẽ", tip: "Chữ l câm" },
+          { w: "order", ipa: "/ˈɔːrdər/", m: "Gọi món", tip: "Âm /ɔːr/ sâu trong họng" },
+          { w: "cup", ipa: "/kʌp/", m: "Tách", tip: "Bật nhẹ /p/ cuối" },
+          { w: "coffee", ipa: "/ˈkɔːfi/", m: "Cà phê", tip: "Trọng âm rơi vào 'cof'" }
+        ]
+      },
+      {
+        id: 4,
+        en: "I would like to make a reservation for two at seven tonight.",
+        vi: "Tôi muốn đặt bàn cho hai người lúc 7 giờ tối nay.",
+        ipa: "/aɪ wʊd laɪk tuː meɪk ə ˌrɛzərˈveɪʃn fɔːr tuː æt ˈsɛvn təˈnaɪt/",
+        cat: "TRAVEL",
+        level: "B1",
+        focus: "Trọng âm 4 âm tiết 'res-er-VA-tion'",
+        words: [
+          { w: "reservation", ipa: "/ˌrɛzərˈveɪʃn/", m: "Sự đặt chỗ trước", tip: "Trọng âm chính ở 'VA'" }
+        ]
+      },
+      {
+        id: 5,
+        en: "Excuse me, does this bus go directly to the international airport?",
+        vi: "Chiếc xe buýt này có đi thẳng đến sân bay quốc tế không?",
+        ipa: "/ɪkˈskjuːz miː dʌz ðɪs bʌs ɡoʊ dəˈrɛktli tuː ðə ˌɪntərˈnæʃnəl ˈɛrpɔːrt/",
+        cat: "TRAVEL",
+        level: "B1",
+        focus: "Âm /z/ trong 'excuse' & trọng âm 'international'",
+        words: [
+          { w: "excuse", ipa: "/ɪkˈskjuːz/", m: "Xin lỗi", tip: "Đuôi là âm /z/" },
+          { w: "international", ipa: "/ˌɪntərˈnæʃnəl/", m: "Quốc tế", tip: "Trọng âm rơi vào 'na'" }
+        ]
+      },
+      {
+        id: 6,
+        en: "She sells seashells by the seashore.",
+        vi: "Cô ấy bán vỏ sò bên bờ biển (Luyện phân biệt /s/ và /ʃ/)",
+        ipa: "/ʃiː sɛlz ˈsiːʃɛlz baɪ ðə ˈsiːʃɔːr/",
+        cat: "TONGUE_TWISTER",
+        level: "B1",
+        focus: "Phân biệt /s/ (răng khép) và /ʃ/ (chu môi)",
+        words: [
+          { w: "She", ipa: "/ʃiː/", m: "Cô ấy", tip: "Chu tròn môi cho /ʃ/" },
+          { w: "sells", ipa: "/sɛlz/", m: "Bán", tip: "Khép răng xì hơi /s/" },
+          { w: "seashells", ipa: "/ˈsiːʃɛlz/", m: "Vỏ sò", tip: "Đổi từ /s/ sang /ʃ/" }
+        ]
+      },
+      {
+        id: 7,
+        en: "Thirty-three thousand feathers on a thrush's throat.",
+        vi: "Ba mươi ba ngàn chiếc lông trên cổ chim (Luyện âm /θ/)",
+        ipa: "/ˈθɜːrti θriː ˈθaʊznd ˈfɛðərz ɑːn ə θrʌʃɪz θroʊt/",
+        cat: "TONGUE_TWISTER",
+        level: "B2",
+        focus: "Âm /θ/ (thổi hơi không rung) & /ð/ (rung)",
+        words: [
+          { w: "Thirty", ipa: "/ˈθɜːrti/", m: "30", tip: "Lưỡi giữa hai răng thổi hơi /θ/" },
+          { w: "thousand", ipa: "/ˈθaʊznd/", m: "Ngàn", tip: "Âm /θ/ không rung" },
+          { w: "feathers", ipa: "/ˈfɛðərz/", m: "Lông vũ", tip: "Âm /ð/ rung thanh quản" }
+        ]
+      },
+      {
+        id: 8,
+        en: "Every cloud has a silver lining, so never give up hope.",
+        vi: "Sau cơn mưa trời lại sáng, đừng bao giờ từ bỏ hy vọng.",
+        ipa: "/ˈɛvri klaʊd hæz ə ˈsɪlvər ˈlaɪnɪŋ soʊ ˈnɛvər ɡɪv ʌp hoʊp/",
+        cat: "IDIOMS",
+        level: "B1",
+        focus: "Nối âm 'give up' & âm /v/ trong 'silver'",
+        words: [
+          { w: "silver", ipa: "/ˈsɪlvər/", m: "Bạc", tip: "Môi dưới chạm răng trên cho /v/" },
+          { w: "hope", ipa: "/hoʊp/", m: "Hy vọng", tip: "Bật nhẹ /p/ cuối" }
+        ]
+      },
+      {
+        id: 9,
+        en: "Actions speak louder than words when building trust.",
+        vi: "Hành động có sức nặng hơn lời nói khi xây dựng lòng tin.",
+        ipa: "/ˈækʃnz spiːk ˈlaʊdər ðæn wɜːrdz wɛn ˈbɪldɪŋ trʌst/",
+        cat: "IDIOMS",
+        level: "B2",
+        focus: "Âm /tr/ trong 'trust' & đuôi /k/ trong 'speak'",
+        words: [
+          { w: "Actions", ipa: "/ˈækʃnz/", m: "Hành động", tip: "Âm /ʃn/ và /z/" },
+          { w: "trust", ipa: "/trʌst/", m: "Lòng tin", tip: "Tổ hợp /tr/ dứt khoát" }
+        ]
+      },
+      {
+        id: 10,
+        en: "Effective communication is the cornerstone of great leadership.",
+        vi: "Giao tiếp hiệu quả là nền tảng cốt lõi của sự lãnh đạo.",
+        ipa: "/ɪˈfɛktɪv kəˌmjuːnɪˈkeɪʃn ɪz ðə ˈkɔːrnərstoʊn ʌv ɡreɪt ˈliːdərʃɪp/",
+        cat: "BUSINESS",
+        level: "B2",
+        focus: "Từ ghép 'cornerstone' & nhịp điệu câu",
+        words: [
+          { w: "communication", ipa: "/kəˌmjuːnɪˈkeɪʃn/", m: "Giao tiếp", tip: "Trọng âm ở 'CA'" },
+          { w: "leadership", ipa: "/ˈliːdərʃɪp/", m: "Lãnh đạo", tip: "Âm /ʃɪp/ mềm" }
+        ]
+      }
+    ];
+
+    // State Variables
+    let currentCategory = "ALL";
+    let currentSentenceIndex = 0;
+    let selectedAccent = "US"; // US or UK
+    let isRecording = false;
+    let recognition = null;
+    let currentActiveWord = null;
+
+    // Load Local Storage Stats
+    let practiceRecords = JSON.parse(localStorage.getItem("speakwise_history") || "[]");
+
+    // Init Waveform Visualizer
+    const waveContainer = document.getElementById("waveform-container");
+    for (let i = 0; i < 18; i++) {
+      const bar = document.createElement("div");
+      bar.className = "wave-bar";
+      waveContainer.appendChild(bar);
+    }
+
+    // Levenshtein Similarity Calculation
+    function levenshtein(s1, s2) {
+      const dp = Array(s1.length + 1).fill(null).map(() => Array(s2.length + 1).fill(0));
+      for (let i = 0; i <= s1.length; i++) dp[i][0] = i;
+      for (let j = 0; j <= s2.length; j++) dp[0][j] = j;
+      for (let i = 1; i <= s1.length; i++) {
+        for (let j = 1; j <= s2.length; j++) {
+          const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[s1.length][s2.length];
+    }
+
+    function wordSimilarity(w1, w2) {
+      if (!w1 || !w2) return 0;
+      const c1 = w1.toLowerCase().replace(/[^a-z0-9']/g, "");
+      const c2 = w2.toLowerCase().replace(/[^a-z0-9']/g, "");
+      if (c1 === c2) return 1.0;
+      const maxLen = Math.max(c1.length, c2.length);
+      if (maxLen === 0) return 1.0;
+      const dist = levenshtein(c1, c2);
+      return Math.max(0, 1 - dist / maxLen);
+    }
+
+    // Render Sentences
+    function renderSentences() {
+      const listEl = document.getElementById("sentences-list");
+      listEl.innerHTML = "";
+      
+      const filtered = sentences.filter(s => currentCategory === "ALL" || s.cat === currentCategory);
+
+      filtered.forEach((s, idx) => {
+        const card = document.createElement("div");
+        card.className = "card sentence-card";
+        card.onclick = () => openStudioForSentence(s.id);
+
+        card.innerHTML = `
+          <div class="sentence-header">
+            <span class="level-tag">${s.level}</span>
+            <span class="cat-tag">${s.cat}</span>
+          </div>
+          <div class="sentence-en">${s.en}</div>
+          <div class="sentence-vi">${s.vi}</div>
+          <div class="focus-pill">🎯 ${s.focus}</div>
+        `;
+        listEl.appendChild(card);
+      });
+
+      updateStatsUI();
+    }
+
+    function filterCategory(cat) {
+      currentCategory = cat;
+      document.querySelectorAll("#cat-chips .chip").forEach(c => c.classList.remove("active"));
+      event.target.classList.add("active");
+      renderSentences();
+    }
+
+    function openStudioForSentence(id) {
+      const idx = sentences.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        currentSentenceIndex = idx;
+        loadStudioSentence();
+        switchTab("studio");
+      }
+    }
+
+    function loadStudioSentence() {
+      const s = sentences[currentSentenceIndex];
+      document.getElementById("current-level-badge").textContent = `${s.level} • ${s.cat}`;
+      document.getElementById("studio-ipa").textContent = s.ipa;
+      document.getElementById("studio-vi").textContent = s.vi;
+      document.getElementById("studio-focus").textContent = `🎯 ${s.focus}`;
+
+      const container = document.getElementById("studio-word-container");
+      container.innerHTML = "";
+
+      const rawWords = s.en.split(/\s+/);
+      rawWords.forEach((word) => {
+        const btn = document.createElement("button");
+        btn.className = "word-btn";
+        btn.textContent = word;
+        btn.onclick = () => {
+          speakText(word, 0.85);
+          btn.classList.add("speaking");
+          setTimeout(() => btn.classList.remove("speaking"), 700);
+        };
+        container.appendChild(btn);
+      });
+
+      resetStudio();
+    }
+
+    function nextSentence() {
+      if (currentSentenceIndex < sentences.length - 1) {
+        currentSentenceIndex++;
+      } else {
+        currentSentenceIndex = 0;
+      }
+      loadStudioSentence();
+    }
+
+    function prevSentence() {
+      if (currentSentenceIndex > 0) {
+        currentSentenceIndex--;
+      } else {
+        currentSentenceIndex = sentences.length - 1;
+      }
+      loadStudioSentence();
+    }
+
+    // Text To Speech
+    function speakText(text, rate = 1.0) {
+      if (!window.speechSynthesis) {
+        showToast("Trình duyệt không hỗ trợ Text-to-Speech");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
+      utterance.rate = rate;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function playCurrentSentence(rate = 1.0) {
+      const s = sentences[currentSentenceIndex];
+      speakText(s.en, rate);
+    }
+
+    function setAccent(accent) {
+      selectedAccent = accent;
+      document.getElementById("btn-accent-us").className = accent === "US" ? "btn btn-secondary" : "btn btn-outline";
+      document.getElementById("btn-accent-uk").className = accent === "UK" ? "btn btn-secondary" : "btn btn-outline";
+      showToast(`Đã chuyển sang giọng đọc: Tiếng Anh - ${accent}`);
+    }
+
+    // Speech Recognition (Web Speech API for iOS Safari & Android)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+
+    function startRecording() {
+      if (!SpeechRecognition) {
+        showToast("Trình duyệt của bạn không hỗ trợ Web Speech API. Bấm nút 'Chấm điểm thử mẫu' bên dưới nhé!");
+        return;
+      }
+
+      try {
+        recognition = new SpeechRecognition();
+        recognition.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
+        recognition.interimResults = true;
+        recognition.continuous = false;
+
+        recognition.onstart = () => {
+          isRecording = true;
+          document.getElementById("mic-button").classList.add("recording");
+          document.getElementById("mic-status-label").textContent = "Đang lắng nghe... Hãy đọc to câu trên!";
+          document.getElementById("mic-status-label").style.color = "var(--primary)";
+          animateWaveform(true);
+        };
+
+        recognition.onresult = (event) => {
+          let interim = "";
+          let finalTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+
+          document.getElementById("partial-transcript").textContent = finalTranscript || interim;
+
+          if (finalTranscript) {
+            stopRecording();
+            analyzeSpeechResult(finalTranscript);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          stopRecording();
+          showToast("Chưa nghe rõ giọng nói. Hãy đọc to hơn và thử lại nhé!");
+        };
+
+        recognition.onend = () => {
+          stopRecording();
+        };
+
+        recognition.start();
+      } catch (err) {
+        stopRecording();
+        showToast("Lỗi khởi động micro: " + err.message);
+      }
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      document.getElementById("mic-button").classList.remove("recording");
+      document.getElementById("mic-status-label").textContent = "Bấm mic và đọc câu tiếng Anh trên";
+      document.getElementById("mic-status-label").style.color = "var(--text-main)";
+      animateWaveform(false);
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+    }
+
+    let waveInterval = null;
+    function animateWaveform(active) {
+      clearInterval(waveInterval);
+      const bars = document.querySelectorAll(".wave-bar");
+      if (!active) {
+        bars.forEach(b => {
+          b.style.height = "8px";
+          b.classList.remove("active");
+        });
+        return;
+      }
+
+      waveInterval = setInterval(() => {
+        bars.forEach((b) => {
+          const rand = Math.floor(Math.random() * 26) + 6;
+          b.style.height = rand + "px";
+          b.classList.add("active");
+        });
+      }, 100);
+    }
+
+    // Pronunciation Analysis Algorithm
+    function analyzeSpeechResult(spokenText) {
+      const s = sentences[currentSentenceIndex];
+      const targetWords = s.en.split(/\s+/).filter(w => w.trim());
+      const spokenWords = spokenText.toLowerCase().split(/\s+/).filter(w => w.trim());
+
+      let totalSim = 0;
+      let matchedCount = 0;
+      let spokenIdx = 0;
+
+      const scoredResults = targetWords.map((rawWord) => {
+        const cleanTarget = rawWord.toLowerCase().replace(/[^a-z0-9']/g, "");
+        let bestSim = 0;
+        let bestSpoken = null;
+        let bestIdx = -1;
+
+        for (let j = Math.max(0, spokenIdx - 1); j < Math.min(spokenWords.length, spokenIdx + 3); j++) {
+          const sim = wordSimilarity(cleanTarget, spokenWords[j]);
+          if (sim > bestSim) {
+            bestSim = sim;
+            bestSpoken = spokenWords[j];
+            bestIdx = j;
+          }
+        }
+
+        let status = "missed";
+        if (bestSim >= 0.90) {
+          status = "perfect";
+          matchedCount++;
+          if (bestIdx >= 0) spokenIdx = bestIdx + 1;
+        } else if (bestSim >= 0.65) {
+          status = "good";
+          matchedCount++;
+          if (bestIdx >= 0) spokenIdx = bestIdx + 1;
+        } else if (bestSim >= 0.35) {
+          status = "needs_work";
+          if (bestIdx >= 0) spokenIdx = bestIdx + 1;
+        }
+
+        totalSim += bestSim;
+
+        const info = (s.words || []).find(w => w.w.toLowerCase() === cleanTarget);
+        return {
+          target: rawWord,
+          clean: cleanTarget,
+          spoken: bestSpoken,
+          status: status,
+          similarity: bestSim,
+          ipa: info ? info.ipa : `/${cleanTarget}/`,
+          meaning: info ? info.m : "Từ vựng câu",
+          tip: info ? info.tip : "Lưu ý phát âm rõ trọng âm và âm đuôi"
+        };
+      });
+
+      const totalWords = targetWords.length;
+      const accuracy = Math.round((totalSim / totalWords) * 100);
+      const completeness = Math.round((matchedCount / totalWords) * 100);
+      const overallScore = Math.min(100, Math.round(accuracy * 0.6 + completeness * 0.4));
+
+      displayAnalysisUI(overallScore, accuracy, scoredResults, spokenText);
+
+      // Save to Local Storage
+      practiceRecords.unshift({
+        id: Date.now(),
+        sentence: s.en,
+        score: overallScore,
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " - " + new Date().toLocaleDateString()
+      });
+      if (practiceRecords.length > 25) practiceRecords.pop();
+      localStorage.setItem("speakwise_history", JSON.stringify(practiceRecords));
+      updateStatsUI();
+    }
+
+    function displayAnalysisUI(score, accuracy, words, spokenText) {
+      document.getElementById("analysis-result-container").style.display = "block";
+      document.getElementById("result-score").textContent = score;
+
+      const badge = document.getElementById("result-score-badge");
+      const title = document.getElementById("result-title");
+      const stars = document.getElementById("result-stars");
+      const feedback = document.getElementById("result-feedback");
+
+      if (score >= 90) {
+        badge.style.borderColor = "var(--success)";
+        badge.style.color = "var(--success)";
+        title.textContent = "Xuất sắc! 🎉";
+        stars.textContent = "⭐⭐⭐";
+        feedback.textContent = `Bạn đọc đạt ${score} điểm! Phát âm chuẩn xác và rất tự nhiên như người bản xứ.`;
+      } else if (score >= 75) {
+        badge.style.borderColor = "var(--cyan)";
+        badge.style.color = "var(--cyan)";
+        title.textContent = "Rất tốt! 👏";
+        stars.textContent = "⭐⭐";
+        feedback.textContent = `Bạn đọc đạt ${score} điểm! Ngữ điệu ổn định, chú ý các từ màu cam để phát âm chuẩn hơn.`;
+      } else {
+        badge.style.borderColor = "var(--warning)";
+        badge.style.color = "var(--warning)";
+        title.textContent = "Cần cải thiện 💡";
+        stars.textContent = "⭐";
+        feedback.textContent = `Bạn đọc đạt ${score} điểm. Hãy bấm vào từng từ màu cam/đỏ bên dưới để nghe mẫu và đọc lại nhé!`;
+      }
+
+      // Word Chips
+      const chipsEl = document.getElementById("result-word-chips");
+      chipsEl.innerHTML = "";
+      words.forEach(w => {
+        const chip = document.createElement("div");
+        chip.className = `scored-word ${w.status}`;
+        chip.textContent = w.target;
+        chip.onclick = () => openWordModal(w);
+        chipsEl.appendChild(chip);
+      });
+
+      document.getElementById("result-advice").innerHTML = `
+        <b>Lời khuyên cải thiện:</b><br>
+        • Bạn đã nói: <i>"${spokenText}"</i><br>
+        • Hãy chạm vào từng từ để nghe lại phát âm chậm và sửa lỗi khẩu hình.
+      `;
+
+      // Scroll to result smoothly
+      document.getElementById("analysis-result-container").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function simulateAnalysis() {
+      const s = sentences[currentSentenceIndex];
+      analyzeSpeechResult(s.en);
+      showToast("Đã phân tích câu mẫu thành công!");
+    }
+
+    function resetStudio() {
+      document.getElementById("analysis-result-container").style.display = "none";
+      document.getElementById("partial-transcript").textContent = "";
+      document.getElementById("mic-status-label").textContent = "Bấm mic và đọc câu tiếng Anh trên";
+    }
+
+    // Word Modal
+    function openWordModal(w) {
+      currentActiveWord = w;
+      document.getElementById("modal-word").textContent = w.target;
+      document.getElementById("modal-ipa").textContent = w.ipa;
+      document.getElementById("modal-meaning").textContent = w.meaning;
+      document.getElementById("modal-tip").textContent = w.tip;
+
+      const badge = document.getElementById("modal-status-badge");
+      if (w.status === "perfect") {
+        badge.style.background = "#D1FAE5";
+        badge.style.color = "#065F46";
+        badge.textContent = "✓ Phát âm chuẩn xác (100%)";
+      } else if (w.status === "good") {
+        badge.style.background = "#CFFAFE";
+        badge.style.color = "#0E7490";
+        badge.textContent = "✓ Khá tốt";
+      } else {
+        badge.style.background = "#FEF3C7";
+        badge.style.color = "#92400E";
+        badge.textContent = "⚠ Cần cải thiện âm này";
+      }
+
+      document.getElementById("word-modal").style.display = "flex";
+    }
+
+    function closeWordModal(e) {
+      if (!e || e.target === document.getElementById("word-modal") || e.target.tagName === "BUTTON") {
+        document.getElementById("word-modal").style.display = "none";
+      }
+    }
+
+    function playWordAudio() {
+      if (currentActiveWord) {
+        speakText(currentActiveWord.clean || currentActiveWord.target, 0.8);
+      }
+    }
+
+    // Navigation Switch Tabs
+    function switchTab(tab) {
+      document.querySelectorAll("nav .nav-item").forEach(i => i.classList.remove("active"));
+      document.getElementById("tab-explore").style.display = "none";
+      document.getElementById("tab-studio").style.display = "none";
+      document.getElementById("tab-stats").style.display = "none";
+      document.getElementById("tab-settings").style.display = "none";
+
+      if (tab === "explore") {
+        document.querySelectorAll("nav .nav-item")[0].classList.add("active");
+        document.getElementById("tab-explore").style.display = "block";
+      } else if (tab === "studio") {
+        document.querySelectorAll("nav .nav-item")[1].classList.add("active");
+        document.getElementById("tab-studio").style.display = "block";
+      } else if (tab === "stats") {
+        document.querySelectorAll("nav .nav-item")[2].classList.add("active");
+        document.getElementById("tab-stats").style.display = "block";
+        renderHistory();
+      } else if (tab === "settings") {
+        document.querySelectorAll("nav .nav-item")[3].classList.add("active");
+        document.getElementById("tab-settings").style.display = "block";
+      }
+    }
+
+    function updateStatsUI() {
+      const count = practiceRecords.length;
+      document.getElementById("stat-practiced").textContent = count;
+      document.getElementById("stats-total").textContent = count;
+
+      if (count > 0) {
+        const sum = practiceRecords.reduce((acc, r) => acc + r.score, 0);
+        const avg = Math.round(sum / count);
+        document.getElementById("stat-avg").textContent = avg;
+        document.getElementById("stats-avg-score").textContent = avg;
+        document.getElementById("stats-mastered").textContent = practiceRecords.filter(r => r.score >= 80).length;
+      }
+    }
+
+    function renderHistory() {
+      const listEl = document.getElementById("history-list");
+      listEl.innerHTML = "";
+      if (practiceRecords.length === 0) {
+        listEl.innerHTML = "<div style='text-align: center; color: var(--text-muted); padding: 20px;'>Chưa có lượt luyện tập nào.</div>";
+        return;
+      }
+      practiceRecords.forEach(r => {
+        const item = document.createElement("div");
+        item.className = "card";
+        item.style.padding = "12px";
+        item.style.marginBottom = "8px";
+        item.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-size: 11px; color: var(--text-muted);">${r.date}</span>
+            <span style="font-size: 12px; font-weight: 700; color: ${r.score >= 80 ? 'var(--success)' : 'var(--warning)'};">${r.score} điểm</span>
+          </div>
+          <div style="font-size: 14px; font-weight: 600;">${r.sentence}</div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.style.opacity = 1;
+      setTimeout(() => t.style.opacity = 0, 3000);
+    }
+
+    // First load
+    renderSentences();
+    loadStudioSentence();
+  </script>
+</body>
+</html>

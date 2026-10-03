@@ -1,0 +1,17 @@
+{
+  "name": "SpeakWise - Luyện Đọc Tiếng Anh",
+  "short_name": "SpeakWise",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://api.iconify.design/heroicons:academic-cap-20-solid.svg?color=%234F46E5",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
