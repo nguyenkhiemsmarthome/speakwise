@@ -11,14 +11,6 @@
   <meta name="apple-mobile-web-app-title" content="SpeakWise">
   <meta name="theme-color" content="#4F46E5">
   <link rel="apple-touch-icon" href="https://api.iconify.design/heroicons:academic-cap-20-solid.svg?color=%234F46E5">
-  <link rel="manifest" href="./manifest.json">
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
-      });
-    }
-  </script>
 
   <style>
     :root {
@@ -551,14 +543,26 @@
           <div id="partial-transcript" style="font-size: 13px; color: var(--primary); margin-top: 6px; font-style: italic; min-height: 20px;"></div>
         </div>
 
-        <!-- Quick Demo Analysis Button -->
-        <button class="btn btn-outline" style="font-size: 12px; padding: 6px 12px; margin: 0 auto;" onclick="simulateAnalysis()">
-          ⚡ Chấm điểm thử mẫu (Test Analysis)
-        </button>
+        <!-- Quick Demo Analysis Button & iOS Help -->
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+          <button class="btn btn-outline" style="font-size: 12px; padding: 6px 14px;" onclick="simulateAnalysis()">
+            ⚡ Chấm điểm thử mẫu (Test Analysis)
+          </button>
+          <div style="font-size: 12px; color: var(--text-muted); cursor: pointer;" onclick="showIosDictationHelpModal()">
+            ❓ iPhone không nhận diện được tiếng? <span style="text-decoration: underline; color: var(--primary); font-weight: 600;">Xem cách bật Đọc chính tả (Dictation)</span>
+          </div>
+        </div>
       </div>
 
       <!-- Detailed Analysis Result -->
       <div id="analysis-result-container" style="display: none;" class="card">
+        <!-- User Voice Playback Button -->
+        <div id="user-voice-container" style="display: none; margin-bottom: 14px;">
+          <button class="btn btn-secondary" style="width: 100%; border: 1.5px solid var(--primary); font-weight: 700;" onclick="playUserVoice()">
+            🎧 Nghe lại giọng bạn vừa đọc
+          </button>
+        </div>
+
         <div class="score-circle-wrapper">
           <div>
             <div style="font-size: 12px; font-weight: 700; color: var(--text-muted);">KẾT QUẢ CHẤM ĐIỂM</div>
@@ -1005,7 +1009,30 @@
       }
     }
 
-    function startRecording() {
+    let mediaStream = null;
+    let audioContext = null;
+    let analyserNode = null;
+    let mediaRecorder = null;
+    let recordedAudioChunks = [];
+    let userVoiceBlobUrl = null;
+
+    async function startRecording() {
+      // Release any TTS audio session lock on iOS Safari
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
+      // 1. Request real microphone hardware stream via getUserMedia
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          setupAudioAnalyser(mediaStream);
+          setupMediaRecorder(mediaStream);
+        }
+      } catch (e) {
+        console.warn("getUserMedia failed or not permitted:", e);
+      }
+
       if (!SpeechRecognition) {
         showToast("Trình duyệt của bạn không hỗ trợ Web Speech API. Bấm nút 'Chấm điểm thử mẫu' bên dưới nhé!");
         return;
@@ -1016,13 +1043,14 @@
         recognition.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
         recognition.interimResults = true;
         recognition.continuous = false;
+        recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
           isRecording = true;
           document.getElementById("mic-button").classList.add("recording");
-          document.getElementById("mic-status-label").textContent = "Đang lắng nghe... Hãy đọc to câu trên!";
+          document.getElementById("mic-status-label").textContent = "Đang lắng nghe... Hãy nói ngay to rõ!";
           document.getElementById("mic-status-label").style.color = "var(--primary)";
-          animateWaveform(true);
+          document.getElementById("partial-transcript").textContent = "";
         };
 
         recognition.onresult = (event) => {
@@ -1046,8 +1074,9 @@
         };
 
         recognition.onerror = (event) => {
+          console.error("Speech recognition error:", event.error);
           stopRecording();
-          showToast("Chưa nghe rõ giọng nói. Hãy đọc to hơn và thử lại nhé!");
+          handleIosSpeechError(event.error);
         };
 
         recognition.onend = () => {
@@ -1061,36 +1090,130 @@
       }
     }
 
+    function setupMediaRecorder(stream) {
+      try {
+        recordedAudioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedAudioChunks.push(e.data);
+          }
+        };
+        mediaRecorder.onstop = () => {
+          if (recordedAudioChunks.length > 0) {
+            const blob = new Blob(recordedAudioChunks, { type: mediaRecorder.mimeType || 'audio/mp4' });
+            if (userVoiceBlobUrl) URL.revokeObjectURL(userVoiceBlobUrl);
+            userVoiceBlobUrl = URL.createObjectURL(blob);
+            updateUserVoicePlaybackUI(true);
+          }
+        };
+        mediaRecorder.start();
+      } catch (e) {
+        console.warn("MediaRecorder setup failed:", e);
+      }
+    }
+
+    function setupAudioAnalyser(stream) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        audioContext = new AudioCtx();
+        if (audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
+        const source = audioContext.createMediaStreamSource(stream);
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 64;
+        source.connect(analyserNode);
+
+        const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+        const bars = document.querySelectorAll(".wave-bar");
+
+        function drawWave() {
+          if (!isRecording) return;
+          analyserNode.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bars.length; i++) {
+            const val = dataArray[i % dataArray.length] || 0;
+            sum += val;
+            const h = Math.max(6, Math.min(32, (val / 255) * 36));
+            bars[i].style.height = `${h}px`;
+            bars[i].classList.toggle("active", val > 40);
+          }
+          requestAnimationFrame(drawWave);
+        }
+        drawWave();
+      } catch (e) {
+        console.warn("Audio analyser error:", e);
+      }
+    }
+
     function stopRecording() {
       isRecording = false;
       document.getElementById("mic-button").classList.remove("recording");
       document.getElementById("mic-status-label").textContent = "Bấm mic và đọc câu tiếng Anh trên";
       document.getElementById("mic-status-label").style.color = "var(--text-main)";
-      animateWaveform(false);
+
+      // Reset bars
+      const bars = document.querySelectorAll(".wave-bar");
+      bars.forEach(b => { b.style.height = "8px"; b.classList.remove("active"); });
+
+      // Stop speech recognition
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
       }
-    }
 
-    let waveInterval = null;
-    function animateWaveform(active) {
-      clearInterval(waveInterval);
-      const bars = document.querySelectorAll(".wave-bar");
-      if (!active) {
-        bars.forEach(b => {
-          b.style.height = "8px";
-          b.classList.remove("active");
-        });
-        return;
+      // Stop media recorder
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch (e) {}
       }
 
-      waveInterval = setInterval(() => {
-        bars.forEach((b) => {
-          const rand = Math.floor(Math.random() * 26) + 6;
-          b.style.height = rand + "px";
-          b.classList.add("active");
-        });
-      }, 100);
+      // Stop mic audio tracks
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+      if (audioContext) {
+        try { audioContext.close(); } catch (e) {}
+        audioContext = null;
+      }
+    }
+
+    function handleIosSpeechError(errCode) {
+      if (errCode === 'service-not-allowed' || errCode === 'not-allowed') {
+        showIosDictationHelpModal();
+      } else if (errCode === 'no-speech') {
+        showToast("⚠️ Không nghe thấy giọng. Trên iPhone, bạn hãy đọc to ngay trong 3 giây sau khi bấm Micro nhé!");
+      } else if (errCode === 'network') {
+        showToast("⚠️ Lỗi mạng nhận diện của Apple. Kiểm tra kết nối Internet hoặc bật 'Bật đọc chính tả' trên máy!");
+      } else {
+        showToast("Chưa nhận được âm thanh rõ. Hãy thử lại hoặc bấm 'Chấm điểm thử mẫu'!");
+      }
+    }
+
+    function playUserVoice() {
+      if (!userVoiceBlobUrl) {
+        showToast("Chưa có đoạn ghi âm giọng đọc của bạn.");
+        return;
+      }
+      const audio = new Audio(userVoiceBlobUrl);
+      audio.play().catch(e => showToast("Không thể phát âm thanh: " + e.message));
+    }
+
+    function updateUserVoicePlaybackUI(hasVoice) {
+      const container = document.getElementById("user-voice-container");
+      if (container) {
+        container.style.display = hasVoice ? "block" : "none";
+      }
+    }
+
+    function showIosDictationHelpModal() {
+      alert("⚠️ HƯỚNG DẪN BẬT NHẬN DIỆN GIỌNG NÓI TRÊN IPHONE (iOS):\n\n" +
+            "Apple yêu cầu BẬT tính năng 'Đọc chính tả' để Safari nhận diện được giọng nói:\n\n" +
+            "1. Mở Cài đặt máy iPhone (Settings) ➔ Cài đặt chung (General) ➔ Bàn phím (Keyboard).\n" +
+            "2. Gạt BẬT mục 'Bật đọc chính tả' (Enable Dictation).\n" +
+            "3. Trong mục 'Ngôn ngữ đọc chính tả' (Dictation Languages): Đảm bảo đã chọn 'Tiếng Anh (Hoa Kỳ / US)'.\n\n" +
+            "Sau khi bật, tải lại trang và bấm Micro đọc là sẽ nhận diện mượt mà!");
     }
 
     // Pronunciation Analysis Algorithm
