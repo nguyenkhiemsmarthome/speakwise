@@ -615,7 +615,49 @@
 
     <!-- TAB 4: CÀI ĐẶT & HƯỚNG DẪN IPHONE (SETTINGS) -->
     <div id="tab-settings" style="display: none;">
-      <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Cài Đặt & Hướng Dẫn</h2>
+      <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Cài Đặt & Quản Lý Dữ Liệu</h2>
+
+      <!-- GOOGLE SHEETS MANAGEMENT CARD -->
+      <div class="card" style="border: 2px solid var(--primary); background: #F8FAFC;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h3 style="font-size: 16px; font-weight: 800; color: var(--primary);">📊 Quản Lý Câu Mẫu Bằng Google Sheets</h3>
+          <span style="font-size: 11px; font-weight: 700; background: #D1FAE5; color: #065F46; padding: 2px 8px; border-radius: 12px;">Real-time</span>
+        </div>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+          Bạn chỉ cần soạn câu trong Google Sheets, dán link vào đây. Mỗi khi thêm/sửa câu trong Sheets, app sẽ tự động cập nhật ngay lập tức!
+        </p>
+
+        <!-- Status Box -->
+        <div id="sheet-status-box" style="padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; background: white; border: 1px solid var(--border);">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="sheet-status-dot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #94A3B8;"></span>
+            <span id="sheet-status-text" style="font-weight: 600;">Đang dùng kho câu mặc định</span>
+          </div>
+        </div>
+
+        <!-- Google Sheet URL Input -->
+        <div style="margin-bottom: 10px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 4px;">Dán link Google Sheets của bạn:</label>
+          <input type="text" id="input-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/.../edit" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); font-size: 13px; background: white; color: var(--text-main);">
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+          <button class="btn btn-primary" style="flex: 2;" onclick="syncGoogleSheet()">
+            🔄 Kết nối & Đồng bộ ngay
+          </button>
+          <button class="btn btn-outline" style="flex: 1;" onclick="resetToDefaultSentences()">
+            ✕ Về mặc định
+          </button>
+        </div>
+
+        <!-- Instructions & Template -->
+        <div style="background: #EEF2FF; padding: 12px; border-radius: 10px; font-size: 12px; color: var(--text-main); line-height: 1.5;">
+          <b>📌 3 bước tạo Google Sheet của riêng bạn:</b><br>
+          1. Mở <a href="https://sheets.new" target="_blank" style="color: var(--primary); font-weight: 700; text-decoration: underline;">sheets.new</a> để tạo bảng tính mới.<br>
+          2. Hàng số 1 đặt 5 cột: <b>English</b> | <b>Vietnamese</b> | <b>Category</b> | <b>Level</b> | <b>Focus</b><br>
+          3. Bấm nút <b>Chia sẻ (Share)</b> ở góc phải trên ➔ chuyển sang <b>"Bất kỳ ai có liên kết đều có thể xem" (Anyone with the link can view)</b> ➔ Sao chép link và dán vào ô trên!
+        </div>
+      </div>
       
       <div class="card" style="background: #F0FDF4; border-color: #BBF7D0;">
         <h3 style="color: #166534; font-size: 15px; font-weight: 700; margin-bottom: 6px;">📱 Cách cài SpeakWise lên màn hình iPhone:</h3>
@@ -698,7 +740,7 @@
   <!-- Application Logic -->
   <script>
     // Preset English Sentences
-    const sentences = [
+    const defaultSentences = [
       {
         id: 1,
         en: "Good morning, how are you doing today?",
@@ -841,6 +883,177 @@
         ]
       }
     ];
+
+    let sentences = [...defaultSentences];
+    let isUsingGoogleSheet = false;
+
+    // Google Sheets Integration Functions
+    function extractSheetId(url) {
+      if (!url) return null;
+      const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      return match ? match[1] : (url.length > 20 && !url.includes('/') ? url.trim() : null);
+    }
+
+    async function syncGoogleSheet(silent = false) {
+      const inputEl = document.getElementById("input-sheet-url");
+      let url = inputEl ? inputEl.value.trim() : "";
+      if (!url) {
+        url = localStorage.getItem("speakwise_sheet_url") || "";
+        if (inputEl) inputEl.value = url;
+      }
+
+      if (!url) {
+        if (!silent) showToast("Vui lòng dán link Google Sheets của bạn trước!");
+        return;
+      }
+
+      const sheetId = extractSheetId(url);
+      if (!sheetId) {
+        if (!silent) showToast("Link Google Sheets không hợp lệ. Hãy kiểm tra lại!");
+        return;
+      }
+
+      if (!silent) showToast("Đang tải dữ liệu từ Google Sheets...");
+      updateSheetStatusUI("syncing", "Đang tải dữ liệu từ Google Sheets...");
+
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+        const resp = await fetch(csvUrl);
+        if (!resp.ok) throw new Error("Không thể kết nối. Hãy đảm bảo bạn đã chọn 'Bất kỳ ai có liên kết đều có thể xem'!");
+
+        const csvText = await resp.text();
+        const loadedSentences = parseCsvToSentences(csvText);
+
+        if (loadedSentences.length === 0) {
+          throw new Error("Bảng tính chưa có câu nào hợp lệ!");
+        }
+
+        sentences = loadedSentences;
+        isUsingGoogleSheet = true;
+        localStorage.setItem("speakwise_sheet_url", url);
+        localStorage.setItem("speakwise_cached_sentences", JSON.stringify(sentences));
+
+        currentSentenceIndex = 0;
+        renderSentences();
+        loadStudioSentence();
+
+        updateSheetStatusUI("connected", `Đang dùng Google Sheets (${sentences.length} câu)`);
+        if (!silent) showToast(`✓ Đã nạp thành công ${sentences.length} câu từ Google Sheets!`);
+      } catch (err) {
+        console.error("Sheet sync error:", err);
+        updateSheetStatusUI("error", "Lỗi: " + err.message);
+        if (!silent) alert("⚠️ LỖI KẾT NỐI GOOGLE SHEETS:\n\n" + err.message + "\n\n👉 Lưu ý: Trong bảng tính Google Sheets, bạn bấm nút 'Chia sẻ' (Share) ở góc phải trên ➔ chọn 'Bất kỳ ai có liên kết đều có thể xem' (Anyone with link can view) nhé!");
+      }
+    }
+
+    function resetToDefaultSentences() {
+      sentences = [...defaultSentences];
+      isUsingGoogleSheet = false;
+      localStorage.removeItem("speakwise_sheet_url");
+      localStorage.removeItem("speakwise_cached_sentences");
+      const inputEl = document.getElementById("input-sheet-url");
+      if (inputEl) inputEl.value = "";
+      currentSentenceIndex = 0;
+      renderSentences();
+      loadStudioSentence();
+      updateSheetStatusUI("default", `Đang dùng kho câu mặc định (${defaultSentences.length} câu)`);
+      showToast("Đã khôi phục kho câu mẫu mặc định!");
+    }
+
+    function updateSheetStatusUI(status, message) {
+      const dot = document.getElementById("sheet-status-dot");
+      const text = document.getElementById("sheet-status-text");
+      if (!dot || !text) return;
+
+      text.textContent = message;
+      if (status === "connected") {
+        dot.style.background = "var(--success)";
+      } else if (status === "syncing") {
+        dot.style.background = "var(--primary)";
+      } else if (status === "error") {
+        dot.style.background = "var(--danger)";
+      } else {
+        dot.style.background = "#94A3B8";
+      }
+    }
+
+    function parseCsvToSentences(csvText) {
+      const rows = [];
+      let currentRow = [];
+      let currentVal = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < csvText.length; i++) {
+        const char = csvText[i];
+        const nextChar = csvText[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            currentVal += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          currentRow.push(currentVal.trim());
+          currentVal = '';
+        } else if ((char === '\r' || char === '\n') && !inQuotes) {
+          if (char === '\r' && nextChar === '\n') i++;
+          currentRow.push(currentVal.trim());
+          if (currentRow.some(c => c.length > 0)) rows.push(currentRow);
+          currentRow = [];
+          currentVal = '';
+        } else {
+          currentVal += char;
+        }
+      }
+      if (currentVal || currentRow.length > 0) {
+        currentRow.push(currentVal.trim());
+        if (currentRow.some(c => c.length > 0)) rows.push(currentRow);
+      }
+
+      if (rows.length < 2) throw new Error("Bảng tính Google Sheet cần ít nhất 1 dòng tiêu đề và 1 dòng dữ liệu!");
+
+      const headers = rows[0].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      let enIdx = headers.findIndex(h => h.includes('en') || h.includes('english') || h.includes('tienganh') || h.includes('cau'));
+      let viIdx = headers.findIndex(h => h.includes('vi') || h.includes('vietnamese') || h.includes('tiengviet') || h.includes('nghia') || h.includes('dich'));
+      let catIdx = headers.findIndex(h => h.includes('cat') || h.includes('chude') || h.includes('category'));
+      let lvlIdx = headers.findIndex(h => h.includes('level') || h.includes('capdo') || h.includes('lvl'));
+      let focusIdx = headers.findIndex(h => h.includes('focus') || h.includes('meo') || h.includes('am') || h.includes('trongtam'));
+
+      if (enIdx === -1) enIdx = 0;
+      if (viIdx === -1) viIdx = 1;
+
+      const result = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const en = (row[enIdx] || '').trim();
+        if (!en) continue;
+
+        const vi = (viIdx !== -1 && row[viIdx]) ? row[viIdx].trim() : 'Câu luyện đọc';
+        const rawCat = (catIdx !== -1 && row[catIdx]) ? row[catIdx].toUpperCase().trim() : 'DAILY';
+        let cat = 'DAILY';
+        if (rawCat.includes('TRAVEL') || rawCat.includes('DU LICH') || rawCat.includes('AN')) cat = 'TRAVEL';
+        else if (rawCat.includes('BUS') || rawCat.includes('CONG') || rawCat.includes('WORK')) cat = 'BUSINESS';
+        else if (rawCat.includes('TWIST') || rawCat.includes('XOAN') || rawCat.includes('LUOI')) cat = 'TONGUE_TWISTER';
+        else if (rawCat.includes('IDIOM') || rawCat.includes('THANH NGU')) cat = 'IDIOMS';
+
+        const lvl = (lvlIdx !== -1 && row[lvlIdx]) ? row[lvlIdx].toUpperCase().trim() : 'A1';
+        const focus = (focusIdx !== -1 && row[focusIdx]) ? row[focusIdx].trim() : 'Phát âm chuẩn từng từ';
+
+        result.push({
+          id: r,
+          en: en,
+          vi: vi,
+          ipa: `/${en.toLowerCase()}/`,
+          cat: cat,
+          level: lvl,
+          focus: focus,
+          words: []
+        });
+      }
+      return result;
+    }
 
     // State Variables
     let currentCategory = "ALL";
@@ -1457,7 +1670,24 @@
       setTimeout(() => t.style.opacity = 0, 3000);
     }
 
-    // First load
+    // First load & Auto-sync Google Sheet
+    const savedSheetUrl = localStorage.getItem("speakwise_sheet_url");
+    if (savedSheetUrl) {
+      const inputEl = document.getElementById("input-sheet-url");
+      if (inputEl) inputEl.value = savedSheetUrl;
+      const cached = localStorage.getItem("speakwise_cached_sentences");
+      if (cached) {
+        try {
+          sentences = JSON.parse(cached);
+          isUsingGoogleSheet = true;
+          updateSheetStatusUI("connected", `Đang dùng Google Sheets (${sentences.length} câu)`);
+        } catch (e) {}
+      }
+      setTimeout(() => syncGoogleSheet(true), 500); // Background refresh
+    } else {
+      updateSheetStatusUI("default", `Đang dùng kho câu mặc định (${defaultSentences.length} câu)`);
+    }
+
     renderSentences();
     loadStudioSentence();
   </script>
