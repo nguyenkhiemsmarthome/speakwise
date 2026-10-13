@@ -469,7 +469,7 @@
   <header>
     <div class="header-title">
       <span>🎙️ SpeakWise</span>
-      <span class="free-pill">v1310-mic2</span>
+      <span class="free-pill">v1310-mic3</span>
     </div>
     <div id="streak-badge" style="font-size: 13px; font-weight: 600; color: #F59E0B;">
       🔥 0 ngày
@@ -1353,11 +1353,51 @@
         if (lastInterim) analyzeSpeechResult(lastInterim);
         else {
           showToast(heardSound
-            ? "Máy nghe thấy tiếng nhưng không ra chữ. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới."
-            : "Chưa nghe được gì. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới.");
-          if (IS_IOS) document.getElementById("kb-dictation").open = true;
+            ? "Máy nghe thấy tiếng nhưng không ra chữ. Bấm mic đọc lại nhé."
+            : "Chưa nghe được gì. Bấm mic và đọc to, rõ nhé.");
         }
       }
+      if (IS_IOS) reloadForFreshMic();
+    }
+
+    // iOS Safari bug (confirmed on device): after one recognition session, later sessions get
+    // silent audio until the page reloads. So reload after every session and restore the screen.
+    const RESUME_KEY = "speakwise_resume";
+    let lastScoredText = null;
+    let lastToast = { msg: "", at: 0 };
+    function reloadForFreshMic() {
+      micLog("iOS: reload page to re-arm mic");
+      setTimeout(() => {
+        try {
+          sessionStorage.setItem(RESUME_KEY, JSON.stringify({
+            idx: currentSentenceIndex,
+            text: lastScoredText,
+            toast: Date.now() - lastToast.at < 2500 ? lastToast.msg : "",
+            log: micLogLines.slice(-40),
+            scroll: document.getElementById("main-content").scrollTop
+          }));
+        } catch (e) { micLog("sessionStorage failed, skip reload"); return; } // never reload without a way back
+        location.reload();
+      }, 400);
+    }
+
+    function readResume() {
+      try {
+        const r = JSON.parse(sessionStorage.getItem(RESUME_KEY) || "null");
+        sessionStorage.removeItem(RESUME_KEY);
+        return r;
+      } catch (e) { return null; }
+    }
+
+    function applyResume(r) {
+      if (Number.isInteger(r.idx) && r.idx >= 0 && r.idx < sentences.length) currentSentenceIndex = r.idx;
+      loadStudioSentence();
+      switchTab("studio");
+      (r.log || []).forEach(l => micLogLines.push(l));
+      micLog("--- trang đã tải lại, mic sẵn sàng ---");
+      if (r.text) analyzeSpeechResult(r.text, false); // redisplay only; it was saved before the reload
+      else document.getElementById("main-content").scrollTop = r.scroll || 0;
+      if (r.toast) showToast(r.toast);
     }
 
     // A fresh instance per session: reusing one on iOS kept the mic busy but deaf after round 1
@@ -1426,6 +1466,7 @@
 
       disposeRecognition(recognition); // leftover from a session that never ended cleanly
       sessionNo++;
+      lastScoredText = null;
       analyzedThisSession = false;
       lastInterim = "";
       heardSound = false;
@@ -1458,8 +1499,7 @@
         finishSession(rec, "no-onstart");
         showToast(recordVoice && IS_IOS
           ? "iPhone chưa mở được nhận diện. Hãy tắt '🎧 Ghi âm để nghe lại' rồi thử lại."
-          : "iPhone chưa mở được nhận diện. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới.");
-        if (IS_IOS) document.getElementById("kb-dictation").open = true;
+          : "iPhone chưa mở được nhận diện. Bấm mic thử lại nhé.");
       });
 
       if (recordVoice) startVoiceCapture();
@@ -1618,6 +1658,7 @@
     // Pronunciation Analysis Algorithm
     function analyzeSpeechResult(spokenText, save = true) {
       const s = sentences[currentSentenceIndex];
+      if (save) lastScoredText = spokenText; // redisplayed after the iOS mic reload
       // Keep original casing for chips unless a word expands into several tokens ("7" -> "seven")
       const targetWords = s.en.split(/[\s\-–—]+/).flatMap(raw => {
         const toks = tokenize(raw);
@@ -1880,6 +1921,7 @@
     }
 
     function showToast(msg) {
+      lastToast = { msg, at: Date.now() };
       const t = document.getElementById("toast");
       t.textContent = msg;
       t.style.opacity = 1;
@@ -1887,6 +1929,7 @@
     }
 
     // First load & Auto-sync Google Sheet
+    const resume = readResume();
     const savedSheetUrl = localStorage.getItem("speakwise_sheet_url");
     if (savedSheetUrl) {
       const inputEl = document.getElementById("input-sheet-url");
@@ -1899,7 +1942,8 @@
           updateSheetStatusUI("connected", `Đang dùng Google Sheets (${sentences.length} câu)`);
         } catch (e) {}
       }
-      setTimeout(() => syncGoogleSheet(true), 500); // Background refresh
+      // Background refresh, skipped after a mic reload: it resets the current sentence
+      if (!resume) setTimeout(() => syncGoogleSheet(true), 500);
     } else {
       updateSheetStatusUI("default", `Đang dùng kho câu mặc định (${defaultSentences.length} câu)`);
     }
@@ -1911,6 +1955,7 @@
 
     renderSentences();
     loadStudioSentence();
+    if (resume) applyResume(resume);
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(e => console.warn("SW register failed:", e));
