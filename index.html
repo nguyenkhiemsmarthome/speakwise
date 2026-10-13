@@ -469,7 +469,7 @@
   <header>
     <div class="header-title">
       <span>🎙️ SpeakWise</span>
-      <span class="free-pill">v1310-mic</span>
+      <span class="free-pill">v1310-mic2</span>
     </div>
     <div id="streak-badge" style="font-size: 13px; font-weight: 600; color: #F59E0B;">
       🔥 0 ngày
@@ -544,6 +544,20 @@
           <div id="partial-transcript" style="font-size: 13px; color: var(--primary); margin-top: 6px; font-style: italic; min-height: 20px;"></div>
         </div>
 
+        <!-- Fallback: iOS keyboard dictation, independent of Safari's Web Speech API -->
+        <details id="kb-dictation" style="text-align: left; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px;">
+          <summary style="font-size: 13px; font-weight: 700; color: #166534; cursor: pointer;">⌨️ Mic không nhận? Dùng 🎤 Đọc chính tả của bàn phím</summary>
+          <div style="font-size: 12px; color: #166534; margin: 8px 0; line-height: 1.5;">
+            1. Chạm vào ô bên dưới để mở bàn phím.<br>
+            2. Bấm biểu tượng <b>🎤</b> trên bàn phím iPhone, đọc câu tiếng Anh, rồi bấm 🎤 lần nữa để dừng.<br>
+            3. Bấm <b>Chấm điểm</b>.
+          </div>
+          <textarea id="kb-input" rows="2" lang="en" autocapitalize="off" autocorrect="off" spellcheck="false"
+            placeholder="Chạm vào đây rồi bấm 🎤 trên bàn phím..."
+            style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border); font-size: 15px; background: white; color: var(--text-main);"></textarea>
+          <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="scoreKeyboardDictation()">✓ Chấm điểm</button>
+        </details>
+
         <!-- Quick Demo Analysis Button & iOS Help -->
         <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
           <label style="font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
@@ -557,6 +571,11 @@
             ❓ iPhone không nhận diện được tiếng? <span style="text-decoration: underline; color: var(--primary); font-weight: 600;">Xem cách bật Đọc chính tả (Dictation)</span>
           </div>
         </div>
+
+        <details style="text-align: left; margin-top: 12px;">
+          <summary style="font-size: 12px; color: var(--text-muted); cursor: pointer;">🔧 Nhật ký micro (chụp màn hình phần này nếu mic lỗi)</summary>
+          <pre id="mic-log" style="font-size: 11px; line-height: 1.4; background: #0F172A; color: #E2E8F0; padding: 10px; border-radius: 8px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto;"></pre>
+        </details>
       </div>
 
       <!-- Detailed Analysis Result -->
@@ -1240,6 +1259,8 @@
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
       utterance.rate = rate;
+      utterance.onend = () => micLog("TTS end");
+      micLog(`TTS speak "${text.slice(0, 30)}" x${rate}`);
       window.speechSynthesis.speak(utterance);
     }
 
@@ -1265,6 +1286,8 @@
     let recordVoice = (localStorage.getItem("speakwise_record_voice") ?? (IS_IOS ? "0" : "1")) === "1";
     let recState = "idle"; // idle | starting | listening | stopping
     let recWatchdog = null;
+    let sessionNo = 0;
+    let heardSound = false;
 
     let mediaStream = null;
     let audioContext = null;
@@ -1273,9 +1296,19 @@
     let recordedAudioChunks = [];
     let userVoiceBlobUrl = null;
 
+    // On-screen log: the only way to see what iOS Safari does without a Mac + cable
+    const micLogLines = [];
+    function micLog(msg) {
+      micLogLines.push(`${(performance.now() / 1000).toFixed(1)}s  ${msg}`);
+      if (micLogLines.length > 60) micLogLines.shift();
+      const el = document.getElementById("mic-log");
+      if (el) { el.textContent = micLogLines.join("\n"); el.scrollTop = el.scrollHeight; }
+    }
+
     function setRecordVoice(on) {
       recordVoice = on;
       saveLocal("speakwise_record_voice", on ? "1" : "0");
+      micLog(`recordVoice=${on}`);
       if (on && IS_IOS) showToast("Đã bật ghi âm. Nếu mic chỉ nhận được 1 lần, hãy tắt lại mục này.");
     }
 
@@ -1297,27 +1330,67 @@
       recWatchdog = setTimeout(onTimeout, ms);
     }
 
-    // One instance for the whole session: iOS often stops delivering results to instances created later
-    function getRecognition() {
-      if (recognition) return recognition;
-      recognition = new SpeechRecognition();
-      recognition.interimResults = true;
-      recognition.continuous = false;
-      recognition.maxAlternatives = 1;
+    // Fully dispose an instance: detach handlers first so its late events can't touch the next session
+    function disposeRecognition(rec) {
+      if (!rec) return;
+      rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
+      rec.onaudiostart = rec.onsoundstart = rec.onspeechstart = rec.onspeechend = rec.onaudioend = null;
+      try { rec.abort(); } catch (e) {} // releases the mic on iOS (otherwise "Dừng sử dụng micrô" stays on)
+      if (recognition === rec) recognition = null;
+    }
 
-      recognition.onstart = () => {
+    // Single exit path per session (onend, or a watchdog when iOS never fires onend)
+    function finishSession(rec, reason) {
+      if (rec !== recognition) return; // stale instance
+      clearTimeout(recWatchdog);
+      micLog(`#${sessionNo} finish (${reason})`);
+      disposeRecognition(rec);
+      recState = "idle";
+      stopVoiceCapture();
+      setMicUI(false, "Bấm mic và đọc câu tiếng Anh trên");
+      if (!analyzedThisSession) {
+        analyzedThisSession = true;
+        if (lastInterim) analyzeSpeechResult(lastInterim);
+        else {
+          showToast(heardSound
+            ? "Máy nghe thấy tiếng nhưng không ra chữ. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới."
+            : "Chưa nghe được gì. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới.");
+          if (IS_IOS) document.getElementById("kb-dictation").open = true;
+        }
+      }
+    }
+
+    // A fresh instance per session: reusing one on iOS kept the mic busy but deaf after round 1
+    function createRecognition() {
+      const rec = new SpeechRecognition();
+      rec.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
+      rec.interimResults = true;
+      rec.continuous = false;
+      rec.maxAlternatives = 1;
+      const n = sessionNo;
+
+      rec.onstart = () => {
+        micLog(`#${n} onstart`);
         clearTimeout(recWatchdog);
         recState = "listening";
         setMicUI(true, "Đang lắng nghe... Hãy nói ngay to rõ!");
+        // No result at all for a long time = deaf session; end it rather than hold the mic forever
+        armWatchdog(12000, () => { micLog(`#${n} watchdog: listening 12s, no result`); stopRecording(); });
       };
+      rec.onaudiostart = () => micLog(`#${n} audiostart`);
+      rec.onsoundstart = () => { heardSound = true; micLog(`#${n} soundstart`); };
+      rec.onspeechstart = () => { heardSound = true; micLog(`#${n} speechstart`); };
+      rec.onspeechend = () => micLog(`#${n} speechend`);
+      rec.onaudioend = () => micLog(`#${n} audioend`);
 
-      recognition.onresult = (event) => {
+      rec.onresult = (event) => {
         let interim = "";
         let finalTranscript = "";
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
           else interim += event.results[i][0].transcript;
         }
+        micLog(`#${n} result ${finalTranscript ? "FINAL" : "interim"}: "${finalTranscript || interim}"`);
         document.getElementById("partial-transcript").textContent = finalTranscript || interim;
         if (interim) lastInterim = interim;
 
@@ -1328,69 +1401,65 @@
         }
       };
 
-      recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        if (event.error === "aborted") return; // we aborted it ourselves (watchdog/stop)
+      rec.onerror = (event) => {
+        micLog(`#${n} error: ${event.error}${event.message ? " - " + event.message : ""}`);
+        if (event.error === "aborted") return;
         analyzedThisSession = true; // error already reported, don't also score a partial
         handleIosSpeechError(event.error);
       };
 
-      recognition.onend = () => {
-        clearTimeout(recWatchdog);
-        recState = "idle";
-        stopVoiceCapture();
-        setMicUI(false, "Bấm mic và đọc câu tiếng Anh trên");
-        // iOS sometimes ends (or the user taps stop) with only an interim result
-        if (!analyzedThisSession) {
-          analyzedThisSession = true;
-          if (lastInterim) analyzeSpeechResult(lastInterim);
-          else showToast("Chưa nghe được gì. Bấm mic và đọc to, rõ nhé!");
-        }
-      };
-      return recognition;
+      rec.onend = () => { micLog(`#${n} onend`); finishSession(rec, "onend"); };
+      return rec;
     }
 
     // Not async on purpose: iOS requires start() to run inside the tap (user gesture)
     function startRecording() {
+      if (window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+        micLog("TTS was speaking -> cancel");
+      }
       if (window.speechSynthesis) window.speechSynthesis.cancel(); // release TTS audio session
       if (!SpeechRecognition) {
-        showToast("Trình duyệt không hỗ trợ nhận diện giọng nói. Hãy dùng Safari (iPhone) hoặc Chrome.");
+        showToast("Trình duyệt không hỗ trợ nhận diện giọng nói. Dùng ⌨️ Đọc chính tả bên dưới nhé.");
+        document.getElementById("kb-dictation").open = true;
         return;
       }
 
-      const rec = getRecognition();
-      rec.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
+      disposeRecognition(recognition); // leftover from a session that never ended cleanly
+      sessionNo++;
       analyzedThisSession = false;
       lastInterim = "";
+      heardSound = false;
       document.getElementById("partial-transcript").textContent = "";
       if (userVoiceBlobUrl) { URL.revokeObjectURL(userVoiceBlobUrl); userVoiceBlobUrl = null; }
       updateUserVoicePlaybackUI(false);
 
+      const rec = createRecognition();
+      recognition = rec;
       recState = "starting";
       setMicUI(true, "Đang mở micro...");
       try {
         rec.start();
+        micLog(`#${sessionNo} start() ok, lang=${rec.lang}`);
       } catch (err) {
-        // InvalidStateError: previous session still alive -> kill it so the next tap works
-        analyzedThisSession = true; // keep this toast; abort's onend must not replace it
-        try { rec.abort(); } catch (e) {}
+        micLog(`#${sessionNo} start() threw ${err.name}: ${err.message}`);
+        analyzedThisSession = true;
+        disposeRecognition(rec);
         recState = "idle";
         setMicUI(false, "Bấm mic và đọc câu tiếng Anh trên");
         showToast("Micro chưa sẵn sàng, bấm lại lần nữa nhé. (" + err.name + ")");
         return;
       }
 
-      // onstart never arriving = the silent "works once" iOS failure; recover instead of hanging
+      // onstart never arriving = the silent iOS failure; recover instead of hanging
       armWatchdog(4000, () => {
-        if (recState !== "starting") return;
-        analyzedThisSession = true; // this toast replaces the "heard nothing" one from onend
-        try { rec.abort(); } catch (e) {}
-        recState = "idle";
-        stopVoiceCapture();
-        setMicUI(false, "Bấm mic và đọc câu tiếng Anh trên");
+        if (recState !== "starting" || recognition !== rec) return;
+        micLog(`#${sessionNo} watchdog: no onstart after 4s`);
+        analyzedThisSession = true; // this toast replaces the "heard nothing" one
+        finishSession(rec, "no-onstart");
         showToast(recordVoice && IS_IOS
           ? "iPhone chưa mở được nhận diện. Hãy tắt '🎧 Ghi âm để nghe lại' rồi thử lại."
-          : "iPhone chưa mở được nhận diện giọng nói. Thử lại, nếu vẫn lỗi hãy tải lại trang.");
+          : "iPhone chưa mở được nhận diện. Thử lại, hoặc dùng ⌨️ Đọc chính tả bên dưới.");
+        if (IS_IOS) document.getElementById("kb-dictation").open = true;
       });
 
       if (recordVoice) startVoiceCapture();
@@ -1398,16 +1467,28 @@
 
     function stopRecording() {
       if (recState !== "starting" && recState !== "listening") return;
+      const rec = recognition;
       recState = "stopping";
       setMicUI(false, "Đang xử lý...");
       stopVoiceCapture();
-      try { recognition.stop(); } catch (e) {}
-      // If iOS never fires onend, force-reset so the mic button keeps working
-      armWatchdog(3000, () => {
+      micLog(`#${sessionNo} stop()`);
+      try { rec.stop(); } catch (e) {}
+      // If iOS never fires onend, force-finish so the mic button keeps working
+      armWatchdog(2500, () => {
         if (recState !== "stopping") return;
-        try { recognition.abort(); } catch (e) {}
-        recognition.onend();
+        micLog(`#${sessionNo} watchdog: no onend after stop`);
+        finishSession(rec, "no-onend");
       });
+    }
+
+    function scoreKeyboardDictation() {
+      const input = document.getElementById("kb-input");
+      const text = input.value.trim();
+      if (!text) { showToast("Ô đang trống. Chạm vào ô, bấm 🎤 trên bàn phím rồi đọc nhé."); return; }
+      input.blur(); // hide keyboard so the result is visible
+      micLog(`keyboard dictation: "${text}"`);
+      analyzeSpeechResult(text);
+      input.value = "";
     }
 
     async function startVoiceCapture() {
@@ -1422,8 +1503,9 @@
         mediaStream = stream;
         setupAudioAnalyser(stream);
         setupMediaRecorder(stream);
+        micLog("voice capture on");
       } catch (e) {
-        console.warn("getUserMedia failed or not permitted:", e);
+        micLog("getUserMedia failed: " + e.name);
       }
     }
 
@@ -1825,6 +1907,7 @@
     const savedAccent = localStorage.getItem("speakwise_accent");
     if (savedAccent === "UK" || savedAccent === "US") setAccent(savedAccent, true);
     document.getElementById("toggle-record-voice").checked = recordVoice;
+    micLog(`env ${document.querySelector('.free-pill').textContent} | iOS=${IS_IOS} ${(navigator.userAgent.match(/OS [\d_]+/) || [''])[0]} | standalone=${!!navigator.standalone} | webSpeech=${!!SpeechRecognition} | recordVoice=${recordVoice}`);
 
     renderSentences();
     loadStudioSentence();
