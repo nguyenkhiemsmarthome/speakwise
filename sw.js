@@ -1,8 +1,11 @@
-const CACHE_NAME = 'speakwise-v1';
+const CACHE_NAME = 'speakwise-v2';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -25,8 +28,19 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+// Network-first so new deploys reach users; cache is only the offline fallback.
+// Cross-origin requests (Google Sheets) are left alone.
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then((res) => res || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

@@ -10,7 +10,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SpeakWise">
   <meta name="theme-color" content="#4F46E5">
-  <link rel="apple-touch-icon" href="https://api.iconify.design/heroicons:academic-cap-20-solid.svg?color=%234F46E5">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.json">
 
   <style>
     :root {
@@ -471,7 +472,7 @@
       <span class="free-pill">iOS Web PWA</span>
     </div>
     <div id="streak-badge" style="font-size: 13px; font-weight: 600; color: #F59E0B;">
-      🔥 1 ngày
+      🔥 0 ngày
     </div>
   </header>
 
@@ -482,9 +483,9 @@
     <div id="tab-explore">
       <div class="card hero-banner">
         <h2>Luyện Đọc Chuẩn Bản Xứ</h2>
-        <p>Phân tích phát âm chi tiết bằng nhận diện giọng nói Web Speech API trên iPhone hoàn toàn miễn phí.</p>
+        <p>Đọc to, máy nhận diện giọng nói (Web Speech API) sẽ cho biết từ nào bạn đọc chưa rõ. Hoàn toàn miễn phí.</p>
         <div style="display: flex; justify-content: space-between; margin-top: 14px;">
-          <div><b id="stat-total-câu">20</b> câu có sẵn</div>
+          <div><b id="stat-total">0</b> câu có sẵn</div>
           <div><b id="stat-practiced">0</b> lượt luyện</div>
           <div><b id="stat-avg">--</b> đ trung bình</div>
         </div>
@@ -546,7 +547,7 @@
         <!-- Quick Demo Analysis Button & iOS Help -->
         <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
           <button class="btn btn-outline" style="font-size: 12px; padding: 6px 14px;" onclick="simulateAnalysis()">
-            ⚡ Chấm điểm thử mẫu (Test Analysis)
+            ⚡ Xem demo chấm điểm (không lưu)
           </button>
           <div style="font-size: 12px; color: var(--text-muted); cursor: pointer;" onclick="showIosDictationHelpModal()">
             ❓ iPhone không nhận diện được tiếng? <span style="text-decoration: underline; color: var(--primary); font-weight: 600;">Xem cách bật Đọc chính tả (Dictation)</span>
@@ -579,6 +580,9 @@
           Phát âm tự nhiên và rõ ràng. Hãy lưu ý các âm đuôi để đạt điểm tuyệt đối!
         </div>
 
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+          Điểm = mức độ máy nhận diện đúng các từ bạn đọc. Máy có thể tự "sửa" một số lỗi âm nhỏ, nên hãy nghe lại giọng mình để so với mẫu.
+        </div>
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px;">Đánh giá từng từ:</div>
         <div class="word-breakdown-row" id="result-word-chips"></div>
 
@@ -601,7 +605,7 @@
         </div>
         <div>
           <div style="font-size: 24px; font-weight: 800; color: var(--success);" id="stats-mastered">0</div>
-          <div style="font-size: 12px; color: var(--text-muted);">Câu ≥80 điểm</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Câu đạt ≥80 điểm</div>
         </div>
         <div>
           <div style="font-size: 24px; font-weight: 800; color: #F59E0B;" id="stats-avg-score">--</div>
@@ -930,8 +934,8 @@
 
         sentences = loadedSentences;
         isUsingGoogleSheet = true;
-        localStorage.setItem("speakwise_sheet_url", url);
-        localStorage.setItem("speakwise_cached_sentences", JSON.stringify(sentences));
+        saveLocal("speakwise_sheet_url", url);
+        saveLocal("speakwise_cached_sentences", JSON.stringify(sentences));
 
         currentSentenceIndex = 0;
         renderSentences();
@@ -1014,12 +1018,14 @@
 
       if (rows.length < 2) throw new Error("Bảng tính Google Sheet cần ít nhất 1 dòng tiêu đề và 1 dòng dữ liệu!");
 
-      const headers = rows[0].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-      let enIdx = headers.findIndex(h => h.includes('en') || h.includes('english') || h.includes('tienganh') || h.includes('cau'));
-      let viIdx = headers.findIndex(h => h.includes('vi') || h.includes('vietnamese') || h.includes('tiengviet') || h.includes('nghia') || h.includes('dich'));
-      let catIdx = headers.findIndex(h => h.includes('cat') || h.includes('chude') || h.includes('category'));
-      let lvlIdx = headers.findIndex(h => h.includes('level') || h.includes('capdo') || h.includes('lvl'));
-      let focusIdx = headers.findIndex(h => h.includes('focus') || h.includes('meo') || h.includes('am') || h.includes('trongtam'));
+      // Exact alias match: substring match picked "vietnamese" for focus because it contains "am"
+      const headers = rows[0].map(h => stripVi(h).toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const col = (...aliases) => headers.findIndex(h => aliases.includes(h));
+      let enIdx = col('english', 'en', 'tienganh', 'cau', 'sentence');
+      let viIdx = col('vietnamese', 'vi', 'tiengviet', 'nghia', 'dich');
+      let catIdx = col('category', 'cat', 'chude');
+      let lvlIdx = col('level', 'lvl', 'capdo');
+      let focusIdx = col('focus', 'meo', 'trongtam', 'meophatam');
 
       if (enIdx === -1) enIdx = 0;
       if (viIdx === -1) viIdx = 1;
@@ -1031,12 +1037,13 @@
         if (!en) continue;
 
         const vi = (viIdx !== -1 && row[viIdx]) ? row[viIdx].trim() : 'Câu luyện đọc';
-        const rawCat = (catIdx !== -1 && row[catIdx]) ? row[catIdx].toUpperCase().trim() : 'DAILY';
+        const rawCat = (catIdx !== -1 && row[catIdx]) ? stripVi(row[catIdx]).toUpperCase().trim() : 'DAILY';
+        const has = (...keys) => keys.some(k => rawCat.includes(k));
         let cat = 'DAILY';
-        if (rawCat.includes('TRAVEL') || rawCat.includes('DU LICH') || rawCat.includes('AN')) cat = 'TRAVEL';
-        else if (rawCat.includes('BUS') || rawCat.includes('CONG') || rawCat.includes('WORK')) cat = 'BUSINESS';
-        else if (rawCat.includes('TWIST') || rawCat.includes('XOAN') || rawCat.includes('LUOI')) cat = 'TONGUE_TWISTER';
-        else if (rawCat.includes('IDIOM') || rawCat.includes('THANH NGU')) cat = 'IDIOMS';
+        if (has('TRAVEL', 'DU LICH', 'AN UONG')) cat = 'TRAVEL';
+        else if (has('BUSINESS', 'CONG VIEC', 'WORK', 'PHONG VAN')) cat = 'BUSINESS';
+        else if (has('TWIST', 'XOAN', 'LUOI')) cat = 'TONGUE_TWISTER';
+        else if (has('IDIOM', 'THANH NGU', 'CAM HUNG')) cat = 'IDIOMS';
 
         const lvl = (lvlIdx !== -1 && row[lvlIdx]) ? row[lvlIdx].toUpperCase().trim() : 'A1';
         const focus = (focusIdx !== -1 && row[focusIdx]) ? row[focusIdx].trim() : 'Phát âm chuẩn từng từ';
@@ -1045,7 +1052,7 @@
           id: r,
           en: en,
           vi: vi,
-          ipa: `/${en.toLowerCase()}/`,
+          ipa: '', // Sheet has no IPA column; empty beats fake IPA
           cat: cat,
           level: lvl,
           focus: focus,
@@ -1062,9 +1069,13 @@
     let isRecording = false;
     let recognition = null;
     let currentActiveWord = null;
+    let analyzedThisSession = false;
+    let lastInterim = "";
 
     // Load Local Storage Stats
-    let practiceRecords = JSON.parse(localStorage.getItem("speakwise_history") || "[]");
+    const MAX_RECORDS = 500;
+    let practiceRecords = [];
+    try { practiceRecords = JSON.parse(localStorage.getItem("speakwise_history") || "[]"); } catch (e) {}
 
     // Init Waveform Visualizer
     const waveContainer = document.getElementById("waveform-container");
@@ -1072,6 +1083,35 @@
       const bar = document.createElement("div");
       bar.className = "wave-bar";
       waveContainer.appendChild(bar);
+    }
+
+    function stripVi(s) {
+      return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ASR often returns digits ("7", "33,000") where the sentence spells the word
+    const ONES = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+    const TENS = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+    function numToWords(n) {
+      if (n < 20) return ONES[n];
+      if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+      if (n < 1000) return ONES[Math.floor(n / 100)] + ' hundred' + (n % 100 ? ' ' + numToWords(n % 100) : '');
+      if (n < 1000000) return numToWords(Math.floor(n / 1000)) + ' thousand' + (n % 1000 ? ' ' + numToWords(n % 1000) : '');
+      return String(n); // shortcut: numbers >= 1M stay as digits, extend if sentences need them
+    }
+
+    // Split into comparable tokens: hyphens split ("thirty-three"), digits become words
+    function tokenize(text) {
+      return text.toLowerCase().split(/[\s\-–—]+/).flatMap(t => {
+        const digits = t.replace(/[,.]/g, '');
+        if (/^\d+$/.test(digits)) return numToWords(parseInt(digits, 10)).split(' ');
+        const c = t.replace(/[^a-z0-9']/g, '');
+        return c ? [c] : [];
+      });
     }
 
     // Levenshtein Similarity Calculation
@@ -1113,16 +1153,17 @@
 
         card.innerHTML = `
           <div class="sentence-header">
-            <span class="level-tag">${s.level}</span>
-            <span class="cat-tag">${s.cat}</span>
+            <span class="level-tag">${esc(s.level)}</span>
+            <span class="cat-tag">${esc(s.cat)}</span>
           </div>
-          <div class="sentence-en">${s.en}</div>
-          <div class="sentence-vi">${s.vi}</div>
-          <div class="focus-pill">🎯 ${s.focus}</div>
+          <div class="sentence-en">${esc(s.en)}</div>
+          <div class="sentence-vi">${esc(s.vi)}</div>
+          <div class="focus-pill">🎯 ${esc(s.focus)}</div>
         `;
         listEl.appendChild(card);
       });
 
+      document.getElementById("stat-total").textContent = sentences.length;
       updateStatsUI();
     }
 
@@ -1204,11 +1245,12 @@
       speakText(s.en, rate);
     }
 
-    function setAccent(accent) {
+    function setAccent(accent, silent = false) {
       selectedAccent = accent;
+      saveLocal("speakwise_accent", accent);
       document.getElementById("btn-accent-us").className = accent === "US" ? "btn btn-secondary" : "btn btn-outline";
       document.getElementById("btn-accent-uk").className = accent === "UK" ? "btn btn-secondary" : "btn btn-outline";
-      showToast(`Đã chuyển sang giọng đọc: Tiếng Anh - ${accent}`);
+      if (!silent) showToast(`Đã chuyển sang giọng đọc: Tiếng Anh - ${accent}`);
     }
 
     // Speech Recognition (Web Speech API for iOS Safari & Android)
@@ -1235,6 +1277,12 @@
         window.speechSynthesis.cancel();
       }
 
+      // Check before opening the mic, otherwise the stream stays open with nothing to stop it
+      if (!SpeechRecognition) {
+        showToast("Trình duyệt không hỗ trợ nhận diện giọng nói. Hãy dùng Safari (iPhone) hoặc Chrome.");
+        return;
+      }
+
       // 1. Request real microphone hardware stream via getUserMedia
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -1246,11 +1294,6 @@
         console.warn("getUserMedia failed or not permitted:", e);
       }
 
-      if (!SpeechRecognition) {
-        showToast("Trình duyệt của bạn không hỗ trợ Web Speech API. Bấm nút 'Chấm điểm thử mẫu' bên dưới nhé!");
-        return;
-      }
-
       try {
         recognition = new SpeechRecognition();
         recognition.lang = selectedAccent === "UK" ? "en-GB" : "en-US";
@@ -1260,6 +1303,8 @@
 
         recognition.onstart = () => {
           isRecording = true;
+          analyzedThisSession = false;
+          lastInterim = "";
           document.getElementById("mic-button").classList.add("recording");
           document.getElementById("mic-status-label").textContent = "Đang lắng nghe... Hãy nói ngay to rõ!";
           document.getElementById("mic-status-label").style.color = "var(--primary)";
@@ -1279,8 +1324,10 @@
           }
 
           document.getElementById("partial-transcript").textContent = finalTranscript || interim;
+          if (interim) lastInterim = interim;
 
-          if (finalTranscript) {
+          if (finalTranscript && !analyzedThisSession) {
+            analyzedThisSession = true;
             stopRecording();
             analyzeSpeechResult(finalTranscript);
           }
@@ -1288,12 +1335,19 @@
 
         recognition.onerror = (event) => {
           console.error("Speech recognition error:", event.error);
+          analyzedThisSession = true; // error already reported, don't also score a partial
           stopRecording();
           handleIosSpeechError(event.error);
         };
 
         recognition.onend = () => {
           stopRecording();
+          // iOS sometimes ends (or the user taps stop) with only an interim result
+          if (!analyzedThisSession) {
+            analyzedThisSession = true;
+            if (lastInterim) analyzeSpeechResult(lastInterim);
+            else showToast("Chưa nghe được gì. Bấm mic và đọc to, rõ nhé!");
+          }
         };
 
         recognition.start();
@@ -1400,7 +1454,7 @@
       } else if (errCode === 'network') {
         showToast("⚠️ Lỗi mạng nhận diện của Apple. Kiểm tra kết nối Internet hoặc bật 'Bật đọc chính tả' trên máy!");
       } else {
-        showToast("Chưa nhận được âm thanh rõ. Hãy thử lại hoặc bấm 'Chấm điểm thử mẫu'!");
+        showToast("Chưa nhận được âm thanh rõ. Hãy thử lại nhé!");
       }
     }
 
@@ -1430,17 +1484,21 @@
     }
 
     // Pronunciation Analysis Algorithm
-    function analyzeSpeechResult(spokenText) {
+    function analyzeSpeechResult(spokenText, save = true) {
       const s = sentences[currentSentenceIndex];
-      const targetWords = s.en.split(/\s+/).filter(w => w.trim());
-      const spokenWords = spokenText.toLowerCase().split(/\s+/).filter(w => w.trim());
+      // Keep original casing for chips unless a word expands into several tokens ("7" -> "seven")
+      const targetWords = s.en.split(/[\s\-–—]+/).flatMap(raw => {
+        const toks = tokenize(raw);
+        return toks.map(t => ({ raw: toks.length === 1 ? raw : t, clean: t }));
+      });
+      const spokenWords = tokenize(spokenText);
+      if (targetWords.length === 0) return;
 
       let totalSim = 0;
       let matchedCount = 0;
       let spokenIdx = 0;
 
-      const scoredResults = targetWords.map((rawWord) => {
-        const cleanTarget = rawWord.toLowerCase().replace(/[^a-z0-9']/g, "");
+      const scoredResults = targetWords.map(({ raw: rawWord, clean: cleanTarget }) => {
         let bestSim = 0;
         let bestSpoken = null;
         let bestIdx = -1;
@@ -1477,7 +1535,7 @@
           spoken: bestSpoken,
           status: status,
           similarity: bestSim,
-          ipa: info ? info.ipa : `/${cleanTarget}/`,
+          ipa: info ? info.ipa : "",
           meaning: info ? info.m : "Từ vựng câu",
           tip: info ? info.tip : "Lưu ý phát âm rõ trọng âm và âm đuôi"
         };
@@ -1489,17 +1547,37 @@
       const overallScore = Math.min(100, Math.round(accuracy * 0.6 + completeness * 0.4));
 
       displayAnalysisUI(overallScore, accuracy, scoredResults, spokenText);
+      if (!save) return;
 
-      // Save to Local Storage
+      const now = new Date();
       practiceRecords.unshift({
         id: Date.now(),
         sentence: s.en,
         score: overallScore,
-        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " - " + new Date().toLocaleDateString()
+        day: dayKey(now),
+        date: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " - " + now.toLocaleDateString()
       });
-      if (practiceRecords.length > 25) practiceRecords.pop();
-      localStorage.setItem("speakwise_history", JSON.stringify(practiceRecords));
+      if (practiceRecords.length > MAX_RECORDS) practiceRecords.pop();
+      saveLocal("speakwise_history", JSON.stringify(practiceRecords));
       updateStatsUI();
+    }
+
+    function dayKey(d) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // Consecutive practice days ending today (or yesterday, so the streak survives until tonight)
+    function calcStreak(records, today = new Date()) {
+      const days = new Set(records.map(r => r.day).filter(Boolean));
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      if (!days.has(dayKey(d))) d.setDate(d.getDate() - 1);
+      let streak = 0;
+      while (days.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+      return streak;
+    }
+
+    function saveLocal(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { console.warn("localStorage write failed:", e); }
     }
 
     function displayAnalysisUI(score, accuracy, words, spokenText) {
@@ -1516,13 +1594,13 @@
         badge.style.color = "var(--success)";
         title.textContent = "Xuất sắc! 🎉";
         stars.textContent = "⭐⭐⭐";
-        feedback.textContent = `Bạn đọc đạt ${score} điểm! Phát âm chuẩn xác và rất tự nhiên như người bản xứ.`;
+        feedback.textContent = `Bạn đọc đạt ${score} điểm! Máy nhận ra gần như mọi từ bạn đọc. Nghe lại giọng mình để so ngữ điệu với mẫu.`;
       } else if (score >= 75) {
         badge.style.borderColor = "var(--cyan)";
         badge.style.color = "var(--cyan)";
         title.textContent = "Rất tốt! 👏";
         stars.textContent = "⭐⭐";
-        feedback.textContent = `Bạn đọc đạt ${score} điểm! Ngữ điệu ổn định, chú ý các từ màu cam để phát âm chuẩn hơn.`;
+        feedback.textContent = `Bạn đọc đạt ${score} điểm! Phần lớn các từ rõ ràng, chú ý các từ màu cam/đỏ bên dưới.`;
       } else {
         badge.style.borderColor = "var(--warning)";
         badge.style.color = "var(--warning)";
@@ -1544,7 +1622,7 @@
 
       document.getElementById("result-advice").innerHTML = `
         <b>Lời khuyên cải thiện:</b><br>
-        • Bạn đã nói: <i>"${spokenText}"</i><br>
+        • Máy nghe được: <i>"${esc(spokenText)}"</i><br>
         • Hãy chạm vào từng từ để nghe lại phát âm chậm và sửa lỗi khẩu hình.
       `;
 
@@ -1554,8 +1632,8 @@
 
     function simulateAnalysis() {
       const s = sentences[currentSentenceIndex];
-      analyzeSpeechResult(s.en);
-      showToast("Đã phân tích câu mẫu thành công!");
+      analyzeSpeechResult(s.en, false);
+      showToast("Demo: kết quả khi đọc đúng toàn bộ câu (không lưu vào lịch sử)");
     }
 
     function resetStudio() {
@@ -1576,16 +1654,21 @@
       if (w.status === "perfect") {
         badge.style.background = "#D1FAE5";
         badge.style.color = "#065F46";
-        badge.textContent = "✓ Phát âm chuẩn xác (100%)";
+        badge.textContent = "✓ Máy nhận đúng từ này";
       } else if (w.status === "good") {
         badge.style.background = "#CFFAFE";
         badge.style.color = "#0E7490";
-        badge.textContent = "✓ Khá tốt";
-      } else {
+        badge.textContent = `✓ Gần đúng (máy nghe thành "${w.spoken}")`;
+      } else if (w.status === "needs_work") {
         badge.style.background = "#FEF3C7";
         badge.style.color = "#92400E";
-        badge.textContent = "⚠ Cần cải thiện âm này";
+        badge.textContent = `⚠ Máy nghe thành "${w.spoken}", cần đọc rõ hơn`;
+      } else {
+        badge.style.background = "#FFE4E6";
+        badge.style.color = "#9F1239";
+        badge.textContent = "✕ Máy không nghe thấy từ này";
       }
+      document.getElementById("modal-ipa").style.display = w.ipa ? "block" : "none";
 
       document.getElementById("word-modal").style.display = "flex";
     }
@@ -1636,8 +1719,9 @@
         const avg = Math.round(sum / count);
         document.getElementById("stat-avg").textContent = avg;
         document.getElementById("stats-avg-score").textContent = avg;
-        document.getElementById("stats-mastered").textContent = practiceRecords.filter(r => r.score >= 80).length;
+        document.getElementById("stats-mastered").textContent = new Set(practiceRecords.filter(r => r.score >= 80).map(r => r.sentence)).size;
       }
+      document.getElementById("streak-badge").textContent = `🔥 ${calcStreak(practiceRecords)} ngày`;
     }
 
     function renderHistory() {
@@ -1647,17 +1731,17 @@
         listEl.innerHTML = "<div style='text-align: center; color: var(--text-muted); padding: 20px;'>Chưa có lượt luyện tập nào.</div>";
         return;
       }
-      practiceRecords.forEach(r => {
+      practiceRecords.slice(0, 30).forEach(r => {
         const item = document.createElement("div");
         item.className = "card";
         item.style.padding = "12px";
         item.style.marginBottom = "8px";
         item.innerHTML = `
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-size: 11px; color: var(--text-muted);">${r.date}</span>
-            <span style="font-size: 12px; font-weight: 700; color: ${r.score >= 80 ? 'var(--success)' : 'var(--warning)'};">${r.score} điểm</span>
+            <span style="font-size: 11px; color: var(--text-muted);">${esc(r.date)}</span>
+            <span style="font-size: 12px; font-weight: 700; color: ${r.score >= 80 ? 'var(--success)' : 'var(--warning)'};">${esc(r.score)} điểm</span>
           </div>
-          <div style="font-size: 14px; font-weight: 600;">${r.sentence}</div>
+          <div style="font-size: 14px; font-weight: 600;">${esc(r.sentence)}</div>
         `;
         listEl.appendChild(item);
       });
@@ -1688,8 +1772,15 @@
       updateSheetStatusUI("default", `Đang dùng kho câu mặc định (${defaultSentences.length} câu)`);
     }
 
+    const savedAccent = localStorage.getItem("speakwise_accent");
+    if (savedAccent === "UK" || savedAccent === "US") setAccent(savedAccent, true);
+
     renderSentences();
     loadStudioSentence();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(e => console.warn("SW register failed:", e));
+    }
   </script>
 </body>
 </html>
